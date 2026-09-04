@@ -1,0 +1,9 @@
+{
+  "analyst": "you",
+  "disposition": "malicious",
+  "technique": "T1110",
+  "source_ip": "203.0.113.7",
+  "account": "svc-backup",
+  "succeeded": true,
+  "narrative": "Repeated failed SSH auth from a single external host against svc-backup, then one success. Looks like a password-guessing run that landed."
+}

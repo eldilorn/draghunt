@@ -1,0 +1,13 @@
+# sealed ground truth must never be committed
+.groundtruth/
+*.sealed.json
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+# local
+*.local.json
+.DS_Store

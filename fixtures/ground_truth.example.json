@@ -1,0 +1,11 @@
+{
+  "scenario_id": "EXAMPLE-01",
+  "technique": "T1110.001",
+  "tactic": "credential-access",
+  "source_ip": "203.0.113.7",
+  "account": "svc-backup",
+  "succeeded": true,
+  "disposition": "malicious",
+  "dealt_utc": "2026-09-04T06:00:00Z",
+  "notes": "Synthetic example. Not lab content. RFC 5737 / RFC 2606 documentation ranges only."
+}
