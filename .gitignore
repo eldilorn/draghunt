@@ -11,3 +11,5 @@ venv/
 # local
 *.local.json
 .DS_Store
+telemetry/
+.dealer/

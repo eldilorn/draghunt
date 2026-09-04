@@ -1,0 +1,13 @@
+{
+  "id": "DEMO-BRUTE",
+  "title": "External SSH password-guessing",
+  "technique": "T1110.001",
+  "tactic": "credential-access",
+  "difficulty": "easy",
+  "disposition": "malicious",
+  "accounts": ["svc-backup", "jsmith", "deploy", "monitor"],
+  "source_pool": ["203.0.113.7", "203.0.113.42", "198.51.100.23", "198.51.100.77"],
+  "succeed_prob": 0.5,
+  "telemetry": { "generator": "auth_bruteforce", "log_source": "sshd", "volume": [40, 120] },
+  "brief": "Auth activity flagged on a Linux host. Work out what hit it, from where, against which account, and whether it landed."
+}

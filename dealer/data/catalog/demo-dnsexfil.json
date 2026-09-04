@@ -1,0 +1,13 @@
+{
+  "id": "DEMO-DNSEXFIL",
+  "title": "DNS tunneling exfiltration",
+  "technique": "T1048.001",
+  "tactic": "exfiltration",
+  "difficulty": "hard",
+  "disposition": "malicious",
+  "accounts": ["jsmith", "deploy"],
+  "source_pool": ["192.0.2.15", "203.0.113.61"],
+  "succeed_prob": 0.7,
+  "telemetry": { "generator": "dns_exfil", "log_source": "dnsmasq", "volume": [60, 160] },
+  "brief": "Resolver logs look wrong. Identify the internal host leaking data, the channel, and whether the transfer completed."
+}

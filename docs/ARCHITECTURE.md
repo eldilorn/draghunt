@@ -1,48 +1,61 @@
 # Architecture
 
-## Why the grader is the first slice
+## What makes it a product, not a scorer
 
-The seed prototype (`casefiles-lab`, private) already fires attacks and seals ground
-truth. That's the lab half. What turns it from a lab script into a *product* is
-**automated grading** — the piece that makes "I own the ground truth" repeatable and
-scoreable. It also needs no live range to be useful, so it's the highest-leverage thing
-to build first and the natural spine for everything downstream.
-
-## Shape
+A grader that diffs two hand-written JSON files is a function, not a product. The value
+is the **closed loop** and the **reason to return**. So the unit of work is a *rep* you
+can actually run, and the thing that pulls you back is your trend over reps. Both had to
+exist for this to be a product; v0.2 builds them around the grader.
 
 ```
-                 ┌─────────────────┐
-   deal a case → │  ground truth   │ ── sealed JSON ──┐
-                 │  (private lab)   │                  │
-                 └─────────────────┘                  ▼
-                                              ┌──────────────┐
-   investigate blind in Wazuh                 │   grader     │ → report (text / JSON)
-                                              │ (this repo)  │
-   write a verdict ──────── verdict JSON ────►└──────────────┘
+  deal ─────────────► seal (JSON ground truth, 0600, git-ignored)
+   │                        │
+   ├─► synthetic telemetry ─┼──► investigate blind
+   │   OR your own runner   │           │
+   │      (real range)      │        verdict (JSON)
+   │                        ▼           │
+   │                     grade ◄────────┘
+   │                        │
+   └────────────────────► record ──► stats (reps, streak, weakest tactic)
 ```
-
-Two JSON documents, one scoring engine. The runner (open source) and the future hosted
-layer both speak the same contract, so nothing is re-modeled at the boundary.
 
 ## Modules
 
-| File               | Responsibility |
-|--------------------|----------------|
-| `dealer/schema.py` | The `GroundTruth` and `Verdict` contracts + validation. No deps. |
-| `dealer/grader.py` | Data-driven rubric → `Report`. All scoring policy lives here. |
-| `dealer/cli.py`    | `dealer grade` argparse front end; text or `--json`; scriptable exit codes. |
+| File                  | Responsibility |
+|-----------------------|----------------|
+| `dealer/schema.py`    | `GroundTruth` / `Verdict` contracts + validation. No deps. |
+| `dealer/catalog.py`   | Load the public deck; `deal()` randomizes (seeded) and seals a case. |
+| `dealer/telemetry.py` | Synthetic, investigable logs for a dealt case. No private content. |
+| `dealer/grader.py`    | Data-driven rubric → `Report`. All scoring policy lives here. |
+| `dealer/history.py`   | Append reps to a local JSONL ledger; compute `stats`. |
+| `dealer/cli.py`       | `list / deal / verdict / grade / stats`. |
+| `dealer/data/catalog/`| Public scenarios: ATT&CK metadata + randomization knobs only. |
+
+## The public/private boundary
+
+The catalog is metadata: an ATT&CK mapping, which accounts and source IPs to randomize
+over, a telemetry recipe. It contains **no attack commands**. Two run modes keep the
+boundary clean:
+
+* **Offline:** `telemetry.py` synthesizes logs from the sealed truth. Fully public.
+* **Live:** `deal` seals the truth, then the user fires their *own* private runner
+  (the maintainer's `casefiles-lab`) against a real range. The product orchestrates and
+  grades; it never carries the attack content.
+
+So the open-source repo can be public in full, and private scenario decks plug in without
+ever being vendored.
+
+## Determinism
+
+`deal(seed=N)` is reproducible: same seed, same case. When no seed is given one is drawn
+and written into the sealed truth's `notes`, so any dealt case can be re-dealt for review
+or bug reports.
 
 ## Deliberately not built yet
 
-* **Hosted layer** (FastAPI + SQLite): attempt history, streaks, weak-spot tracking.
-  Reserved in `pyproject.toml` under the `hosted` extra. Same language, self-hostable.
-* **`dealer deal`**: a bridge that seals a scenario to this JSON format. The existing
-  bash `dealer.sh` writes a text seal; a converter is the clean seam, not a rewrite.
-* **Multi-SIEM, auth, billing**: out of scope for v1 on purpose.
-
-## Boundary rule
-
-The private scenario deck (attack specifics, scenario text) is never vendored into this
-product repo. The grader consumes a generic ground-truth *shape*, not any scenario's
-content. Example fixtures are synthetic and use documentation-only IP ranges
-(RFC 5737 / RFC 2606).
+* **Live bridge**: fire a user runner and pull real Wazuh telemetry. The seam exists
+  (deal already seals the JSON the runner would need); the fire-and-collect step is next.
+* **Benign decoys**: today every demo case is malicious, so the disposition call is real
+  but not yet adversarial. Decoy scenarios make "malicious vs benign" a genuine decision.
+* **Hosted layer** (FastAPI + SQLite): syncs the same JSONL records. Reserved in
+  `pyproject.toml` under the `hosted` extra.
