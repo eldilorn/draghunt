@@ -33,6 +33,7 @@ from . import catalog as catalog_mod
 from . import telemetry as telemetry_mod
 from . import history as history_mod
 from . import config as config_mod
+from . import fire as fire_mod
 
 SEAL_DIR = Path(".groundtruth")
 TELEMETRY_DIR = Path("telemetry")
@@ -60,7 +61,28 @@ def _cmd_deal(args: argparse.Namespace) -> int:
 
     print(case.blind_brief)
 
-    if not args.no_telemetry:
+    if args.fire:
+        cfg = config_mod.load()
+        plan = fire_mod.build_plan(case, cfg, live=True)
+        if not plan.ready:
+            print("error: cannot fire, range not configured: " + ", ".join(plan.gaps),
+                  file=sys.stderr)
+            print("       run `dealer init-config` and fill in range.toml.", file=sys.stderr)
+            return 2
+        print(f"FIRING LIVE against {cfg.target.host} via {cfg.attacker.host} ...")
+        result = fire_mod.execute(plan, confirm=True)
+        win = result.window()
+        (SEAL_DIR / f"{stamp}-{case.scenario.id}.fire.json").write_text(json.dumps({
+            "returncode": result.returncode, "started_utc": result.started_utc,
+            "finished_utc": result.finished_utc, "window": win, "command": result.command,
+            "error": result.error}, indent=2))
+        if result.ok:
+            print(f"  fired OK. Investigate your SIEM for {win['start']} .. {win['end']}")
+        else:
+            print(f"  fire returned rc={result.returncode} error={result.error}", file=sys.stderr)
+            if result.stderr:
+                print("  stderr:", result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "", file=sys.stderr)
+    elif not args.no_telemetry:
         TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
         tel_path = TELEMETRY_DIR / f"{stamp}-{case.scenario.id}.log"
         tel_path.write_text("\n".join(telemetry_mod.generate(case)) + "\n")
@@ -164,6 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--scenario", help="scenario id (default: random)")
     d.add_argument("--seed", type=int, help="deterministic seed (default: random)")
     d.add_argument("--no-telemetry", action="store_true", help="seal only, no synthetic logs")
+    d.add_argument("--fire", action="store_true", help="LIVE: fire against the configured range (needs range.toml)")
     d.set_defaults(func=_cmd_deal)
 
     v = sub.add_parser("verdict", help="write a blank verdict template")

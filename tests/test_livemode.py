@@ -6,7 +6,7 @@ from pathlib import Path
 from dealer.config import RangeConfig, load, EXAMPLE_TOML, ConfigError
 from dealer.siem import available, get_adapter, SiemAdapter
 from dealer.catalog import deal
-from dealer.fire import build_plan, execute, FirePlan
+from dealer.fire import build_plan, execute, FirePlan, FireResult, FireBlocked
 
 
 class TestConfig(unittest.TestCase):
@@ -80,10 +80,52 @@ class TestFirePlan(unittest.TestCase):
         self.assertEqual(plan.params["SUCCEED"], "yes" if case.ground_truth.succeeded else "no")
         self.assertEqual(plan.params["DRY_RUN"], "1")  # never fires in phase 1
 
-    def test_execute_is_a_phase2_stub(self):
-        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig())
-        with self.assertRaises(NotImplementedError):
+    def test_dry_plan_marks_dry_run(self):
+        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig(), live=False)
+        self.assertEqual(plan.params["DRY_RUN"], "1")
+
+    def test_live_plan_flips_dry_run(self):
+        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig(), live=True)
+        self.assertEqual(plan.params["DRY_RUN"], "0")
+
+
+class TestFireGates(unittest.TestCase):
+    def _ready_live_plan(self):
+        cfg = RangeConfig()
+        cfg.attacker.host = "10.0.0.5"; cfg.attacker.user = "kali"; cfg.target.host = "10.0.0.6"
+        return build_plan(deal("DEMO-BRUTE", seed=7), cfg, live=True)
+
+    def test_execute_without_confirm_refuses(self):
+        with self.assertRaises(FireBlocked):
+            execute(self._ready_live_plan(), confirm=False)
+
+    def test_execute_dry_plan_refuses(self):
+        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig(), live=False)
+        with self.assertRaises(FireBlocked):
             execute(plan, confirm=True)
+
+    def test_execute_unready_live_plan_refuses(self):
+        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig(), live=True)
+        with self.assertRaises(FireBlocked):
+            execute(plan, confirm=True)
+
+    def test_execute_runs_and_captures(self):
+        # a ready, live plan whose command is a harmless local stand-in for the ssh
+        plan = FirePlan("DEMO-BRUTE", {"SCN": "DEMO-BRUTE"},
+                        ["bash", "-c", "echo hi; exit 0"], ready=True, gaps=[], live=True)
+        r = execute(plan, confirm=True)
+        self.assertTrue(r.ok)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("hi", r.stdout)
+        w = r.window()
+        self.assertIn("start", w)
+        self.assertIn("end", w)
+
+    def test_execute_nonzero_is_not_ok_but_returns(self):
+        plan = FirePlan("DEMO-BRUTE", {}, ["bash", "-c", "exit 7"], ready=True, gaps=[], live=True)
+        r = execute(plan, confirm=True)
+        self.assertFalse(r.ok)
+        self.assertEqual(r.returncode, 7)
 
 
 if __name__ == "__main__":

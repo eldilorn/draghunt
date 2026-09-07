@@ -20,6 +20,7 @@ from . import catalog as catalog_mod
 from . import telemetry as telemetry_mod
 from . import config as config_mod
 from . import fire as fire_mod
+from .fire import FireBlocked
 from .siem import available as siem_available
 from .grader import grade
 from .schema import Verdict, load_ground_truth, SchemaError
@@ -67,6 +68,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
    <div><label>scenario</label><select id=scenario></select></div>
    <div><label>seed (optional)</label><input id=seed size=8 placeholder=random></div>
    <button id=dealbtn>Deal</button>
+   <label style="display:flex;gap:6px;align-items:center;color:var(--dim)"><input type=checkbox id=firelive disabled> fire live (real attack)</label>
   </div>
  </div>
 
@@ -115,17 +117,28 @@ async function boot(){
  const b=$('cfgbanner');
  if(s.fire_ready){b.className='banner ok';b.textContent=`Range configured. SIEM adapter: ${s.siem}. (Live fire is phase 2.)`;}
  else{b.className='banner warn';b.textContent=`Dry-run only — range not configured (${s.gaps.join(', ')}). Offline reps work now; add range.toml for live fire.`;}
+ $('firelive').disabled=!s.fire_ready;
  renderStats(s.stats);
 }
 function renderStats(t){$('stats').textContent=t||'no reps yet';}
 $('dealbtn').onclick=async()=>{
- const body={scenario:$('scenario').value};const seed=$('seed').value.trim();if(seed)body.seed=parseInt(seed,10);
- const c=await api('/api/deal',body);CASE=c.case_id;
- $('caseid').textContent=c.case_id;$('brief').textContent=c.brief;$('fireplan').textContent=c.fire_plan;
- $('telemetry').textContent=c.telemetry.join('\\n');
- $('casepanel').classList.remove('hidden');$('verdictpanel').classList.remove('hidden');
- $('resultpanel').classList.add('hidden');
- window.scrollTo(0,document.body.scrollHeight);
+ const fire=$('firelive').checked;
+ if(fire&&!confirm('Fire a REAL attack against your configured target now?'))return;
+ const body={scenario:$('scenario').value,fire};const seed=$('seed').value.trim();if(seed)body.seed=parseInt(seed,10);
+ $('dealbtn').disabled=true;$('dealbtn').textContent=fire?'Firing…':'Dealing…';
+ try{
+  const c=await api('/api/deal',body);CASE=c.case_id;
+  $('caseid').textContent=c.case_id;$('brief').textContent=c.brief;$('fireplan').textContent=c.fire_plan;
+  if(c.fired){const r=c.fire_result;
+   $('telemetry').textContent='LIVE FIRE  rc='+r.returncode+(r.error?(' · error='+r.error):' · ok')
+    +'\\ninvestigate your SIEM for  '+r.window.start+'  ..  '+r.window.end
+    +(r.stdout?('\\n\\n'+r.stdout):'');
+  }else{$('telemetry').textContent=c.telemetry.join('\\n');}
+  $('casepanel').classList.remove('hidden');$('verdictpanel').classList.remove('hidden');
+  $('resultpanel').classList.add('hidden');
+  window.scrollTo(0,document.body.scrollHeight);
+ }catch(e){alert('deal failed: '+e.message);}
+ finally{$('dealbtn').disabled=false;$('dealbtn').textContent='Deal';}
 };
 $('gradebtn').onclick=async()=>{
  if(!CASE)return;
@@ -194,7 +207,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._grade(self._read_body())
             else:
                 self._json(404, {"error": "not found"})
-        except (SchemaError, config_mod.ConfigError) as exc:
+        except (SchemaError, config_mod.ConfigError, FireBlocked) as exc:
             self._json(400, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             self._json(500, {"error": f"{type(exc).__name__}: {exc}"})
@@ -216,20 +229,39 @@ class Handler(BaseHTTPRequestHandler):
 
     def _deal(self, body: dict):
         cfg = config_mod.load()
+        fire = bool(body.get("fire"))
         case = catalog_mod.deal(scenario_id=body.get("scenario"), seed=body.get("seed"))
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         case_id = f"{stamp}-{case.scenario.id}"
         SEAL_DIR.mkdir(parents=True, exist_ok=True)
         _case_path(case_id).write_text(json.dumps(catalog_mod.seal_dict(case.ground_truth), indent=2))
+
+        if fire:
+            plan = fire_mod.build_plan(case, cfg, live=True)
+            if not plan.ready:
+                raise SchemaError("range not configured: " + ", ".join(plan.gaps))
+            result = fire_mod.execute(plan, confirm=True)
+            win = result.window()
+            (SEAL_DIR / f"{case_id}.fire.json").write_text(json.dumps({
+                "returncode": result.returncode, "started_utc": result.started_utc,
+                "finished_utc": result.finished_utc, "window": win,
+                "command": result.command, "error": result.error}, indent=2))
+            self._json(200, {
+                "case_id": case_id, "brief": case.blind_brief, "fired": True,
+                "fire_plan": plan.render(),
+                "fire_result": {"returncode": result.returncode, "ok": result.ok,
+                                "error": result.error, "window": win,
+                                "stdout": result.stdout[-2000:]},
+            })
+            return
+
+        plan = fire_mod.build_plan(case, cfg, live=False)
         TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
         tel = telemetry_mod.generate(case)
         (TELEMETRY_DIR / f"{case_id}.log").write_text("\n".join(tel) + "\n")
-        plan = fire_mod.build_plan(case, cfg)
         self._json(200, {
-            "case_id": case_id,
-            "brief": case.blind_brief,
-            "fire_plan": plan.render(),
-            "telemetry": tel,
+            "case_id": case_id, "brief": case.blind_brief, "fired": False,
+            "fire_plan": plan.render(), "telemetry": tel,
         })
 
     def _grade(self, body: dict):

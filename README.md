@@ -12,7 +12,7 @@ you look, and grades your verdict against it.
 
 ## Status
 
-**v0.3 — offline loop plus a local web control center; live mode scaffolded (dry-run only).** Deal a case, get
+**v0.4 — offline loop, local web control center, and gated live fire against a real range.** Deal a case, get
 synthetic telemetry to investigate, submit a verdict, get graded, and track your reps
 over time. When you have a range, the same `deal` bridges to your own attack runner
 instead of the synthetic telemetry (see "Two ways to run" below).
@@ -96,7 +96,9 @@ attacks, so nothing on your network may reach the button.
 The same dashboard is the control center for a real range: it deals and seals a
 case, drives your Kali box over SSH to fire your own attack runner, pulls the
 alerts from your SIEM, grades your verdict, and resets the target between reps.
-Nothing fires until an explicit gate in phase 2. Set it up with:
+Live fire is real as of v0.4, behind an explicit gate: it refuses unless the range
+is configured and you confirm. Fire from the CLI with `dealer deal --scenario S01 --fire`,
+or tick the live-fire box in the dashboard. Set it up with:
 
 ```bash
 python -m dealer init-config   # writes an example range.toml (0600)

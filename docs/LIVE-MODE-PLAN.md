@@ -1,7 +1,7 @@
 # Live mode — control-center architecture (planning)
 
-Status: **planned, not built.** Nothing here fires. Live attacks begin only in
-phase 2, behind an explicit `--fire` gate.
+Status: **phases 1-2 built.** Live fire exists behind an explicit gate (config +
+confirm required). Phases 3-4 (reset, SIEM pull) and 5 (packaging) remain.
 
 ## The planes
 
@@ -40,8 +40,9 @@ The laptop never attacks anything directly. It tells Kali what to fire.
 1. **Web skeleton + dry-run deal.** Dashboard runs locally. Click deal -> seals
    truth, SSHes to Kali, Kali prints the plan only. Nothing fires. Grading and
    stats wired in from here.
-2. **Live fire.** `--fire` turns the dry run into a real attack on the target.
-   Click -> attack -> telemetry in Wazuh. Investigation is manual in the console.
+2. **Live fire.** DONE. `--fire` (CLI) or the live-fire checkbox (web) turns the
+   dry run into a real attack. Gated: refuses unless the range is configured and
+   the caller confirms. Records the investigation window for the SIEM pull.
 3. **Reset.** Proxmox snapshot revert as step zero + runner cleanup, so reps run
    against a clean box. Lands before drift accumulates.
 4. **Wazuh alert pull.** Dashboard queries the indexer and shows the window's
