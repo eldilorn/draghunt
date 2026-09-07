@@ -1,7 +1,7 @@
 # Live mode — control-center architecture (planning)
 
-Status: **phases 1-4 built.** Live fire and reset are gated (config + confirm).
-SIEM alert pull works via the adapter seam (Wazuh). Phase 5 (packaging) remains.
+Status: **phases 1-5 built.** Full live loop (reset, fire, SIEM pull, grade,
+track), plus a native desktop app. Live fire and reset are gated (config + confirm).
 
 ## The planes
 
@@ -70,7 +70,7 @@ new SIEM is a new class, not a fork.
 * This keeps v1 solo-maintainable (one real adapter) while being genuinely open
   to Splunk, Elastic, or anything else, ideally via community contributions.
 
-## Phase 5 — packaging and desktop app (future)
+## Phase 5 — packaging and desktop app (DONE)
 
 The dashboard is a local backend plus a plain HTML/JS frontend. "Web UI" vs
 "installable app" is only a choice about that frontend's shell and packaging;
@@ -78,10 +78,10 @@ the backend is unchanged. So the web build is the road to a desktop app, not a
 detour.
 
 * **Installable via pip** — already true; the project ships a `draghunt` command.
-* **Desktop app** — wrap the existing frontend in a native window with
-  **pywebview** (stays all-Python, tiny), then package as an **AppImage** or
-  **.deb**. Avoid Electron (heavy for a solo maintainer); Tauri is an option but
-  adds Rust.
+* **Desktop app** — DONE. `draghunt desktop` wraps the frontend in a pywebview
+  window (browser fallback if the extra isn't installed). `packaging/install.sh`
+  registers it as a desktop app; `packaging/build-appimage.sh` builds an AppImage.
+  See `docs/PACKAGING.md`. Avoided Electron as planned.
 * **Alternative** — a terminal UI (Textual) if the browser is unwanted, but it
   would not carry forward into a graphical desktop app.
 

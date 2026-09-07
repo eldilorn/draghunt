@@ -353,10 +353,17 @@ class Handler(BaseHTTPRequestHandler):
              "source": a.source, "description": a.description} for a in alerts]})
 
 
-def serve(host: str = "127.0.0.1", port: int = 8787) -> None:
-    if host not in ("127.0.0.1", "localhost", "::1"):
+_LOCALHOST = ("127.0.0.1", "localhost", "::1")
+
+
+def make_httpd(host: str = "127.0.0.1", port: int = 8787) -> ThreadingHTTPServer:
+    if host not in _LOCALHOST:
         raise ValueError("refusing to bind off localhost: the app can fire attacks")
-    httpd = ThreadingHTTPServer((host, port), Handler)
+    return ThreadingHTTPServer((host, port), Handler)
+
+
+def serve(host: str = "127.0.0.1", port: int = 8787) -> None:
+    httpd = make_httpd(host, port)
     print(f"Draghunt control center on http://{host}:{port}  (Ctrl-C to stop)")
     try:
         httpd.serve_forever()

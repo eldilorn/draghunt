@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Draghunt">
+  <rect width="256" height="256" rx="56" fill="#0e1116"/>
+  <!-- scent trail laid in advance -->
+  <path d="M32 200 Q92 168 116 176 T176 132" fill="none" stroke="#58a6ff"
+        stroke-width="10" stroke-linecap="round" stroke-dasharray="1 26" opacity="0.9"/>
+  <!-- the mark at the end of the trail -->
+  <circle cx="188" cy="100" r="40" fill="none" stroke="#3fb950" stroke-width="10"/>
+  <circle cx="188" cy="100" r="8" fill="#3fb950"/>
+  <line x1="188" y1="46" x2="188" y2="62" stroke="#3fb950" stroke-width="8" stroke-linecap="round"/>
+  <line x1="188" y1="138" x2="188" y2="154" stroke="#3fb950" stroke-width="8" stroke-linecap="round"/>
+  <line x1="134" y1="100" x2="150" y2="100" stroke="#3fb950" stroke-width="8" stroke-linecap="round"/>
+  <line x1="226" y1="100" x2="242" y2="100" stroke="#3fb950" stroke-width="8" stroke-linecap="round"/>
+</svg>

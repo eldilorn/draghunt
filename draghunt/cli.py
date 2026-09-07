@@ -164,6 +164,13 @@ def _cmd_stats(args: argparse.Namespace) -> int:
 
 
 
+
+def _cmd_desktop(args: argparse.Namespace) -> int:
+    from . import desktop
+    desktop.run(port=args.port)
+    return 0
+
+
 def _cmd_web(args: argparse.Namespace) -> int:
     from . import web
     web.serve(host=args.host, port=args.port)
@@ -257,6 +264,10 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--host", default="127.0.0.1", help="bind host (localhost only)")
     w.add_argument("--port", type=int, default=8787)
     w.set_defaults(func=_cmd_web)
+
+    dk = sub.add_parser("desktop", help="run Draghunt in a native window (falls back to browser)")
+    dk.add_argument("--port", type=int, default=0, help="fixed port (default: auto)")
+    dk.set_defaults(func=_cmd_desktop)
 
     ic = sub.add_parser("init-config", help="write an example range.toml")
     ic.add_argument("--out", default="range.toml")

@@ -12,7 +12,7 @@ you look, and grades your verdict against it.
 
 ## Status
 
-**v0.6 — offline loop, web control center, gated live fire + reset, and SIEM alert pull.** Deal a case, get
+**v0.7 — full live loop plus an installable desktop app.** Deal a case, get
 synthetic telemetry to investigate, submit a verdict, get graded, and track your reps
 over time. When you have a range, the same `deal` bridges to your own attack runner
 instead of the synthetic telemetry (see "Two ways to run" below).
@@ -90,6 +90,18 @@ python -m draghunt web        # http://127.0.0.1:8787
 Deal a case, read the synthetic telemetry, submit a verdict, and see it graded,
 all in one page. It binds to localhost only, on purpose: live mode can fire real
 attacks, so nothing on your network may reach the button.
+
+
+### Desktop app
+
+Run the dashboard in a native window instead of a browser:
+
+```bash
+draghunt desktop            # falls back to your browser if pywebview is absent
+packaging/install.sh        # install it as a real app (menu entry + icon)
+```
+
+See `docs/PACKAGING.md` for the native-window backend and the AppImage build.
 
 ## Live mode (planned, phased)
 

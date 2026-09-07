@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Draghunt
+GenericName=Blue-team investigation reps
+Comment=Deal a MITRE-mapped case, investigate blind, get graded in your own lab
+Exec=draghunt desktop
+Icon=draghunt
+Terminal=false
+Categories=Development;Security;Education;
+Keywords=security;blueteam;soc;detection;mitre;wazuh;
+StartupWMClass=Draghunt
