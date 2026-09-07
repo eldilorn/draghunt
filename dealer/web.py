@@ -22,6 +22,8 @@ from . import telemetry as telemetry_mod
 from . import config as config_mod
 from . import fire as fire_mod
 from .fire import FireBlocked
+from . import reset as reset_mod
+from .reset import ResetBlocked
 from .siem import available as siem_available, get_adapter
 from .grader import grade
 from .schema import Verdict, load_ground_truth, SchemaError
@@ -75,6 +77,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
    <div><label>seed (optional)</label><input id=seed size=8 placeholder=random></div>
    <button id=dealbtn>Deal</button>
    <label style="display:flex;gap:6px;align-items:center;color:var(--dim)"><input type=checkbox id=firelive disabled> fire live (real attack)</label>
+   <label style="display:flex;gap:6px;align-items:center;color:var(--dim)"><input type=checkbox id=resetfirst disabled> reset target first</label>
   </div>
  </div>
 
@@ -128,22 +131,25 @@ async function boot(){
  if(s.fire_ready){b.className='banner ok';b.textContent=`Range configured. SIEM adapter: ${s.siem}. (Live fire is phase 2.)`;}
  else{b.className='banner warn';b.textContent=`Dry-run only — range not configured (${s.gaps.join(', ')}). Offline reps work now; add range.toml for live fire.`;}
  $('firelive').disabled=!s.fire_ready;
+ $('resetfirst').disabled=!(s.fire_ready&&s.reset_ready);
+ $('resetfirst').checked=(s.fire_ready&&s.reset_ready);
  renderStats(s.stats);
  try{const h=await api('/api/siem-health');const b=$('cfgbanner');
   b.textContent+=`  ·  SIEM ${h.adapter}: ${h.ok?'reachable':'not reachable ('+h.detail+')'}`;}catch(e){}
 }
 function renderStats(t){$('stats').textContent=t||'no reps yet';}
 $('dealbtn').onclick=async()=>{
- const fire=$('firelive').checked;
- if(fire&&!confirm('Fire a REAL attack against your configured target now?'))return;
- const body={scenario:$('scenario').value,fire};const seed=$('seed').value.trim();if(seed)body.seed=parseInt(seed,10);
+ const fire=$('firelive').checked;const reset=$('resetfirst').checked;
+ if(fire&&!confirm((reset?'Revert the target to its snapshot AND ':'')+'fire a REAL attack against your configured target now?'))return;
+ const body={scenario:$('scenario').value,fire,reset};const seed=$('seed').value.trim();if(seed)body.seed=parseInt(seed,10);
  $('dealbtn').disabled=true;$('dealbtn').textContent=fire?'Firing…':'Dealing…';
  try{
   const c=await api('/api/deal',body);CASE=c.case_id;
   $('caseid').textContent=c.case_id;$('brief').textContent=c.brief;$('fireplan').textContent=c.fire_plan;
   if(c.fired){const r=c.fire_result;
    $('telhead').textContent='Live fire';
-   $('telemetry').textContent='rc='+r.returncode+(r.error?(' · error='+r.error):' · ok')
+   const rs=(c.reset&&c.reset.length)?('reset:\\n'+c.reset.map(x=>'  ['+(x.ok?'ok':'FAIL')+'] '+x.name+': '+x.detail).join('\\n')+'\\n\\n'):'';
+   $('telemetry').textContent=rs+'rc='+r.returncode+(r.error?(' · error='+r.error):' · ok')
     +'\\ninvestigate your SIEM for  '+r.window.start+'  ..  '+r.window.end
     +(r.stdout?('\\n\\n'+r.stdout):'');
    $('alertsbox').classList.remove('hidden');$('alerts').innerHTML='';$('alertstatus').textContent='';
@@ -244,7 +250,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._alerts(self._read_body())
             else:
                 self._json(404, {"error": "not found"})
-        except (SchemaError, config_mod.ConfigError, FireBlocked) as exc:
+        except (SchemaError, config_mod.ConfigError, FireBlocked, ResetBlocked) as exc:
             self._json(400, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             self._json(500, {"error": f"{type(exc).__name__}: {exc}"})
@@ -261,6 +267,8 @@ class Handler(BaseHTTPRequestHandler):
             "siem_available": siem_available(),
             "fire_ready": not gaps,
             "gaps": gaps,
+            "reset_mode": cfg.reset.mode,
+            "reset_ready": cfg.reset.mode != "none",
             "stats": history_mod.stats().as_text(),
         })
 
@@ -276,6 +284,10 @@ class Handler(BaseHTTPRequestHandler):
             plan = fire_mod.build_plan(case, cfg, live=True)
             if not plan.ready:
                 raise SchemaError("range not configured: " + ", ".join(plan.gaps))
+            reset_steps = []
+            if bool(body.get("reset")) and cfg.reset.mode != "none":
+                rr = reset_mod.reset_target(cfg, case.scenario.id, confirm=True)
+                reset_steps = [{"name": st.name, "ok": st.ok, "detail": st.detail} for st in rr.steps]
             result = fire_mod.execute(plan, confirm=True)
             win = result.window()
             (SEAL_DIR / f"{case_id}.fire.json").write_text(json.dumps({
@@ -285,6 +297,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {
                 "case_id": case_id, "brief": case.blind_brief, "fired": True,
                 "fire_plan": plan.render(),
+                "reset": reset_steps,
                 "fire_result": {"returncode": result.returncode, "ok": result.ok,
                                 "error": result.error, "window": win,
                                 "stdout": result.stdout[-2000:]},

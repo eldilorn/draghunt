@@ -12,7 +12,7 @@ you look, and grades your verdict against it.
 
 ## Status
 
-**v0.5 — offline loop, web control center, gated live fire, and SIEM alert pull.** Deal a case, get
+**v0.6 — offline loop, web control center, gated live fire + reset, and SIEM alert pull.** Deal a case, get
 synthetic telemetry to investigate, submit a verdict, get graded, and track your reps
 over time. When you have a range, the same `deal` bridges to your own attack runner
 instead of the synthetic telemetry (see "Two ways to run" below).
@@ -144,6 +144,7 @@ Exit codes: `0` pass (≥60) / ok, `1` failing grade, `2` bad input — so it sl
 | `dealer deal [--scenario ID] [--seed N]` | seal a case, drop telemetry, print a blind brief |
 | `dealer verdict --out V.json` | write a blank verdict to fill in |
 | `dealer grade --truth T --verdict V [--record] [--json]` | score it, optionally record |
+| `dealer reset --confirm` | reset the target (snapshot rollback and/or cleanup) |
 | `dealer alerts --case <id>` | pull SIEM alerts for a fired case's window |
 | `dealer stats` | reps, pass rate, streak, weakest tactic |
 

@@ -12,7 +12,7 @@ from .catalog import deal, load_catalog, Scenario, DealtCase
 from .telemetry import generate as generate_telemetry
 from .history import record, stats, Stats
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __all__ = [
     "grade", "Report", "LineItem",
     "GroundTruth", "Verdict", "SchemaError",

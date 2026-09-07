@@ -1,7 +1,7 @@
 # Live mode — control-center architecture (planning)
 
-Status: **phases 1, 2, 4 built.** Live fire is gated (config + confirm). SIEM alert
-pull works via the adapter seam (Wazuh). Phase 3 (reset) and 5 (packaging) remain.
+Status: **phases 1-4 built.** Live fire and reset are gated (config + confirm).
+SIEM alert pull works via the adapter seam (Wazuh). Phase 5 (packaging) remains.
 
 ## The planes
 
@@ -43,8 +43,9 @@ The laptop never attacks anything directly. It tells Kali what to fire.
 2. **Live fire.** DONE. `--fire` (CLI) or the live-fire checkbox (web) turns the
    dry run into a real attack. Gated: refuses unless the range is configured and
    the caller confirms. Records the investigation window for the SIEM pull.
-3. **Reset.** Proxmox snapshot revert as step zero + runner cleanup, so reps run
-   against a clean box. Lands before drift accumulates.
+3. **Reset.** DONE. Proxmox snapshot rollback (gated, names the VM) and/or a
+   cleanup job delegated to the private runner (ACTION=cleanup over SSH), per
+   reset.mode. `dealer reset --confirm`, or `deal --fire --reset` as step zero.
 4. **SIEM alert pull.** DONE. Dashboard and CLI query the configured SIEM adapter
    for the fired case's window and show the alerts. `dealer alerts --case <id>`.
    Later home of "did my detection rule fire?".

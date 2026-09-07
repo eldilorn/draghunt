@@ -34,6 +34,7 @@ from . import telemetry as telemetry_mod
 from . import history as history_mod
 from . import config as config_mod
 from . import fire as fire_mod
+from . import reset as reset_mod
 
 SEAL_DIR = Path(".groundtruth")
 TELEMETRY_DIR = Path("telemetry")
@@ -70,6 +71,12 @@ def _cmd_deal(args: argparse.Namespace) -> int:
                   file=sys.stderr)
             print("       run `dealer init-config` and fill in range.toml.", file=sys.stderr)
             return 2
+        if args.reset:
+            print(f"Resetting target (mode={cfg.reset.mode}) ...")
+            rr = reset_mod.reset_target(cfg, case.scenario.id, confirm=True)
+            print(rr.render())
+            if not rr.ok:
+                print("  warning: reset had failures; the rep may not be clean.", file=sys.stderr)
         print(f"FIRING LIVE against {cfg.target.host} via {cfg.attacker.host} ...")
         result = fire_mod.execute(plan, confirm=True)
         win = result.window()
@@ -178,6 +185,24 @@ def _cmd_init_config(args: argparse.Namespace) -> int:
 
 
 
+
+def _cmd_reset(args: argparse.Namespace) -> int:
+    cfg = config_mod.load()
+    if cfg.reset.mode == "none":
+        print("reset.mode is 'none' in range.toml — nothing to do.")
+        return 0
+    needs_confirm = cfg.reset.mode in ("snapshot", "both")
+    if needs_confirm and not args.confirm:
+        print("error: snapshot rollback is destructive. Re-run with --confirm.", file=sys.stderr)
+        px = cfg.reset.proxmox
+        print(f"       would revert VM {px.get('vmid','?')} on node {px.get('node','?')} "
+              f"to snapshot '{px.get('snapshot','?')}'.", file=sys.stderr)
+        return 2
+    rr = reset_mod.reset_target(cfg, args.scenario or "", confirm=True)
+    print(rr.render())
+    return 0 if rr.ok else 1
+
+
 def _cmd_alerts(args: argparse.Namespace) -> int:
     from datetime import datetime, timezone
     from .siem import get_adapter
@@ -212,6 +237,7 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--seed", type=int, help="deterministic seed (default: random)")
     d.add_argument("--no-telemetry", action="store_true", help="seal only, no synthetic logs")
     d.add_argument("--fire", action="store_true", help="LIVE: fire against the configured range (needs range.toml)")
+    d.add_argument("--reset", action="store_true", help="reset the target first (snapshot/cleanup per range.toml)")
     d.set_defaults(func=_cmd_deal)
 
     v = sub.add_parser("verdict", help="write a blank verdict template")
@@ -236,6 +262,11 @@ def build_parser() -> argparse.ArgumentParser:
     ic.add_argument("--out", default="range.toml")
     ic.add_argument("--force", action="store_true")
     ic.set_defaults(func=_cmd_init_config)
+
+    rs = sub.add_parser("reset", help="reset the target (snapshot rollback and/or cleanup)")
+    rs.add_argument("--scenario", help="scenario id, for scenario-specific cleanup")
+    rs.add_argument("--confirm", action="store_true", help="required for destructive snapshot rollback")
+    rs.set_defaults(func=_cmd_reset)
 
     al = sub.add_parser("alerts", help="pull SIEM alerts for a fired case's window")
     al.add_argument("--case", required=True, help="case id (see .groundtruth/*.fire.json)")
