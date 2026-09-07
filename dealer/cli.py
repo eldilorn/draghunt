@@ -32,6 +32,7 @@ from .grader import grade
 from . import catalog as catalog_mod
 from . import telemetry as telemetry_mod
 from . import history as history_mod
+from . import config as config_mod
 
 SEAL_DIR = Path(".groundtruth")
 TELEMETRY_DIR = Path("telemetry")
@@ -132,6 +133,27 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _cmd_web(args: argparse.Namespace) -> int:
+    from . import web
+    web.serve(host=args.host, port=args.port)
+    return 0
+
+
+def _cmd_init_config(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    if out.exists() and not args.force:
+        print(f"error: {out} exists (use --force)", file=sys.stderr)
+        return 2
+    out.write_text(config_mod.EXAMPLE_TOML)
+    try:
+        os.chmod(out, 0o600)
+    except OSError:
+        pass
+    print(f"Example range config written to {out} (0600). Fill it in for live mode.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="dealer", description="The Dealer investigation-rep loop.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -157,6 +179,16 @@ def build_parser() -> argparse.ArgumentParser:
     g.set_defaults(func=_cmd_grade)
 
     sub.add_parser("stats", help="reps, pass rate, streak, weakest tactic").set_defaults(func=_cmd_stats)
+    w = sub.add_parser("web", help="run the local control-center dashboard")
+    w.add_argument("--host", default="127.0.0.1", help="bind host (localhost only)")
+    w.add_argument("--port", type=int, default=8787)
+    w.set_defaults(func=_cmd_web)
+
+    ic = sub.add_parser("init-config", help="write an example range.toml")
+    ic.add_argument("--out", default="range.toml")
+    ic.add_argument("--force", action="store_true")
+    ic.set_defaults(func=_cmd_init_config)
+
     return p
 
 

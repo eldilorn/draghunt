@@ -12,7 +12,7 @@ you look, and grades your verdict against it.
 
 ## Status
 
-**v0.2 — the loop runs end to end, offline, with no live range.** Deal a case, get
+**v0.3 — offline loop plus a local web control center; live mode scaffolded (dry-run only).** Deal a case, get
 synthetic telemetry to investigate, submit a verdict, get graded, and track your reps
 over time. When you have a range, the same `deal` bridges to your own attack runner
 instead of the synthetic telemetry (see "Two ways to run" below).
@@ -77,6 +77,39 @@ Ships with three synthetic demo scenarios (SSH brute force, web shell, DNS exfil
 mapped to ATT&CK. Every deal randomizes the source, the account, and whether the attack
 lands, and seals that truth blind — so no two reps are the same and the answer key is
 never the one everyone else downloaded.
+
+
+## Control center (web dashboard)
+
+A local, zero-dependency dashboard drives the whole loop from the browser:
+
+```bash
+python -m dealer web        # http://127.0.0.1:8787
+```
+
+Deal a case, read the synthetic telemetry, submit a verdict, and see it graded,
+all in one page. It binds to localhost only, on purpose: live mode can fire real
+attacks, so nothing on your network may reach the button.
+
+## Live mode (planned, phased)
+
+The same dashboard is the control center for a real range: it deals and seals a
+case, drives your Kali box over SSH to fire your own attack runner, pulls the
+alerts from your SIEM, grades your verdict, and resets the target between reps.
+Nothing fires until an explicit gate in phase 2. Set it up with:
+
+```bash
+python -m dealer init-config   # writes an example range.toml (0600)
+```
+
+See `docs/LIVE-MODE-PLAN.md` for the architecture, the phased build, and the
+config you'll need (Kali, target, SIEM, Proxmox).
+
+### Any SIEM, one seam
+
+Everything is SIEM-agnostic except pulling alerts, which lives behind a small
+adapter interface (`dealer/siem`). **Wazuh** is the one shipped adapter; adding
+Splunk, Elastic, or anything else is a new class, not a fork.
 
 ## Two ways to run
 
