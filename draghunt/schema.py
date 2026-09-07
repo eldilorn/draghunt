@@ -1,8 +1,8 @@
-"""Data contracts for the Dealer grading loop.
+"""Data contracts for Draghunt grading loop.
 
 Two documents flow through the grader:
 
-* GroundTruth — the sealed truth the Dealer produces when it deals a case.
+* GroundTruth — the sealed truth Draghunt produces when it deals a case.
   It is written blind and never shown to the analyst until after they submit.
 * Verdict — what the analyst submits after investigating the telemetry.
 

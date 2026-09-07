@@ -17,7 +17,7 @@ from pathlib import Path
 from .grader import Report
 from .schema import GroundTruth
 
-DEFAULT_STORE = Path(".dealer") / "history.jsonl"
+DEFAULT_STORE = Path(".draghunt") / "history.jsonl"
 
 
 def record(report: Report, gt: GroundTruth, store: Path | None = None) -> Path:
@@ -64,7 +64,7 @@ class Stats:
         if self.attempts == 0:
             return "No reps recorded yet. Deal a case and grade it with --record."
         lines = [
-            "Dealer stats",
+            "Draghunt stats",
             f"  reps      : {self.attempts}",
             f"  passed    : {self.passed} ({self.pass_rate:.0f}%)",
             f"  avg score : {self.avg_score:.0f}/100",

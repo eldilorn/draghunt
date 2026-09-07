@@ -3,10 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dealer.config import RangeConfig, load, EXAMPLE_TOML, ConfigError
-from dealer.siem import available, get_adapter, SiemAdapter
-from dealer.catalog import deal
-from dealer.fire import build_plan, execute, FirePlan, FireResult, FireBlocked
+from draghunt.config import RangeConfig, load, EXAMPLE_TOML, ConfigError
+from draghunt.siem import available, get_adapter, SiemAdapter
+from draghunt.catalog import deal
+from draghunt.fire import build_plan, execute, FirePlan, FireResult, FireBlocked
 
 
 class TestConfig(unittest.TestCase):
@@ -27,12 +27,12 @@ class TestConfig(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "range.toml"
             p.write_text(EXAMPLE_TOML)
-            os.environ["DEALER_SIEM_PASSWORD"] = "sekret"
+            os.environ["DRAGHUNT_SIEM_PASSWORD"] = "sekret"
             try:
                 cfg = load(p)
                 self.assertEqual(cfg.siem.options["password"], "sekret")
             finally:
-                del os.environ["DEALER_SIEM_PASSWORD"]
+                del os.environ["DRAGHUNT_SIEM_PASSWORD"]
 
     def test_bad_toml_raises(self):
         with tempfile.TemporaryDirectory() as d:
@@ -135,7 +135,7 @@ if __name__ == "__main__":
 class TestCaseId(unittest.TestCase):
     def test_ids_are_unique_within_the_same_second(self):
         from datetime import datetime, timezone
-        from dealer.web import new_case_id, _CASE_ID
+        from draghunt.web import new_case_id, _CASE_ID
         now = datetime(2026, 9, 7, 17, 24, 52, tzinfo=timezone.utc)
         a = new_case_id("DEMO-BRUTE", now)
         b = new_case_id("DEMO-BRUTE", now)

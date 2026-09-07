@@ -3,11 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dealer.catalog import deal, load_catalog
-from dealer.telemetry import generate
-from dealer.grader import grade
-from dealer.schema import Verdict
-from dealer import history
+from draghunt.catalog import deal, load_catalog
+from draghunt.telemetry import generate
+from draghunt.grader import grade
+from draghunt.schema import Verdict
+from draghunt import history
 
 
 class TestCatalog(unittest.TestCase):

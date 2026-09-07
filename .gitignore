@@ -12,6 +12,6 @@ venv/
 *.local.json
 .DS_Store
 telemetry/
-.dealer/
+.draghunt/
 range.toml
 range.local.toml

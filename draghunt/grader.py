@@ -64,7 +64,7 @@ class Report:
 
     def as_text(self) -> str:
         lines = [
-            f"Dealer verdict report — scenario {self.scenario_id}",
+            f"Draghunt verdict report — scenario {self.scenario_id}",
             f"Score: {self.total:.0f}/100   Grade: {self.band}",
             "",
         ]

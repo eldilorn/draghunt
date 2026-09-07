@@ -23,13 +23,13 @@ exist for this to be a product; v0.2 builds them around the grader.
 
 | File                  | Responsibility |
 |-----------------------|----------------|
-| `dealer/schema.py`    | `GroundTruth` / `Verdict` contracts + validation. No deps. |
-| `dealer/catalog.py`   | Load the public deck; `deal()` randomizes (seeded) and seals a case. |
-| `dealer/telemetry.py` | Synthetic, investigable logs for a dealt case. No private content. |
-| `dealer/grader.py`    | Data-driven rubric → `Report`. All scoring policy lives here. |
-| `dealer/history.py`   | Append reps to a local JSONL ledger; compute `stats`. |
-| `dealer/cli.py`       | `list / deal / verdict / grade / stats`. |
-| `dealer/data/catalog/`| Public scenarios: ATT&CK metadata + randomization knobs only. |
+| `draghunt/schema.py`    | `GroundTruth` / `Verdict` contracts + validation. No deps. |
+| `draghunt/catalog.py`   | Load the public deck; `deal()` randomizes (seeded) and seals a case. |
+| `draghunt/telemetry.py` | Synthetic, investigable logs for a dealt case. No private content. |
+| `draghunt/grader.py`    | Data-driven rubric → `Report`. All scoring policy lives here. |
+| `draghunt/history.py`   | Append reps to a local JSONL ledger; compute `stats`. |
+| `draghunt/cli.py`       | `list / deal / verdict / grade / stats`. |
+| `draghunt/data/catalog/`| Public scenarios: ATT&CK metadata + randomization knobs only. |
 
 ## The public/private boundary
 

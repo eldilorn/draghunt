@@ -4,8 +4,8 @@
 """
 import unittest
 
-from dealer.schema import GroundTruth, Verdict
-from dealer.grader import grade, WRONG_POLARITY_CAP
+from draghunt.schema import GroundTruth, Verdict
+from draghunt.grader import grade, WRONG_POLARITY_CAP
 
 
 def gt(**over):

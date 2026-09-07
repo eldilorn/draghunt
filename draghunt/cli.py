@@ -1,18 +1,18 @@
-"""`dealer` — the investigation-rep loop.
+"""`draghunt` — the investigation-rep loop.
 
-    dealer list                         show the deck
-    dealer deal [--scenario ID]         seal a case, drop telemetry, print a blind brief
-    dealer verdict --out V.json         write a blank verdict to fill in
-    dealer grade --truth T --verdict V  score it, optionally --record
-    dealer stats                        reps, pass rate, streak, weakest tactic
+    draghunt list                         show the deck
+    draghunt deal [--scenario ID]         seal a case, drop telemetry, print a blind brief
+    draghunt verdict --out V.json         write a blank verdict to fill in
+    draghunt grade --truth T --verdict V  score it, optionally --record
+    draghunt stats                        reps, pass rate, streak, weakest tactic
 
 A full offline rep needs no live range:
 
-    dealer deal --scenario DEMO-BRUTE
+    draghunt deal --scenario DEMO-BRUTE
     # investigate the printed telemetry file, then:
-    dealer verdict --out my_verdict.json      # edit it
-    dealer grade --truth <sealed> --verdict my_verdict.json --record
-    dealer stats
+    draghunt verdict --out my_verdict.json      # edit it
+    draghunt grade --truth <sealed> --verdict my_verdict.json --record
+    draghunt stats
 
 Exit status: 0 pass / 0 ok, 1 failing grade, 2 usage or schema error.
 """
@@ -69,7 +69,7 @@ def _cmd_deal(args: argparse.Namespace) -> int:
         if not plan.ready:
             print("error: cannot fire, range not configured: " + ", ".join(plan.gaps),
                   file=sys.stderr)
-            print("       run `dealer init-config` and fill in range.toml.", file=sys.stderr)
+            print("       run `draghunt init-config` and fill in range.toml.", file=sys.stderr)
             return 2
         if args.reset:
             print(f"Resetting target (mode={cfg.reset.mode}) ...")
@@ -99,8 +99,8 @@ def _cmd_deal(args: argparse.Namespace) -> int:
     print(f"Ground truth (sealed)     : {seal_path}  (do not open until you submit)")
     print()
     print("Next: investigate, then")
-    print(f"  dealer verdict --out verdict.json     # fill it in")
-    print(f"  dealer grade --truth {seal_path} --verdict verdict.json --record")
+    print(f"  draghunt verdict --out verdict.json     # fill it in")
+    print(f"  draghunt grade --truth {seal_path} --verdict verdict.json --record")
     return 0
 
 
@@ -227,7 +227,7 @@ def _cmd_alerts(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="dealer", description="The Dealer investigation-rep loop.")
+    p = argparse.ArgumentParser(prog="draghunt", description="Draghunt investigation-rep loop.")
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("list", help="show the scenario deck").set_defaults(func=_cmd_list)

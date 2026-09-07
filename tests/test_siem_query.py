@@ -2,7 +2,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from dealer.siem import get_adapter, Alert
+from draghunt.siem import get_adapter, Alert
 
 
 FAKE_RESPONSE = {

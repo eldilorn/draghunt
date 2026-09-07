@@ -1,12 +1,12 @@
 """Reset logic tested without a live Proxmox, via a faked _req sequence."""
 import unittest
 
-from dealer.config import RangeConfig
-from dealer.reset import ProxmoxReset, reset_target, ResetBlocked
+from draghunt.config import RangeConfig
+from draghunt.reset import ProxmoxReset, reset_target, ResetBlocked
 
 
 PX = {"api_url": "https://pve:8006", "node": "pve", "vmid": 101,
-      "snapshot": "clean", "token_id": "root@pam!dealer", "token_secret": "s"}
+      "snapshot": "clean", "token_id": "root@pam!draghunt", "token_secret": "s"}
 
 
 class FakePx(ProxmoxReset):

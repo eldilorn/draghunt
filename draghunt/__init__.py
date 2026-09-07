@@ -1,10 +1,10 @@
-"""The Dealer — blue-team investigation reps you own end to end.
+"""Draghunt — blue-team investigation reps you own end to end.
 
 The loop: deal a case (sealed truth), investigate telemetry blind, submit a
 verdict, get it graded, track your reps over time.
 
 Public API:
-    from dealer import deal, generate_telemetry, grade, GroundTruth, Verdict
+    from draghunt import deal, generate_telemetry, grade, GroundTruth, Verdict
 """
 from .schema import GroundTruth, Verdict, SchemaError, load_ground_truth, load_verdict
 from .grader import grade, Report, LineItem

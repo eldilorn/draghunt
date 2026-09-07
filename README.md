@@ -1,4 +1,4 @@
-# The Dealer
+# Draghunt
 
 Realistic blue-team investigation reps in **your own lab**, not on a stranger's frozen
 incident. You own the whole loop:
@@ -7,7 +7,7 @@ incident. You own the whole loop:
 
 LetsDefend and CyberDefenders hand you a stranger's frozen pcap that everyone else also
 downloaded, so you never own the ground truth and can't tune a detection against it. The
-Dealer flips that: it deals *you* a randomized, MITRE-mapped case, seals the truth before
+Draghunt flips that: it deals *you* a randomized, MITRE-mapped case, seals the truth before
 you look, and grades your verdict against it.
 
 ## Status
@@ -27,24 +27,24 @@ No install, no dependencies — Python 3.11+ standard library only.
 
 ```bash
 # 1. deal a case: seals the truth, drops telemetry to investigate, prints a blind brief
-python -m dealer deal --scenario DEMO-BRUTE
+python -m draghunt deal --scenario DEMO-BRUTE
 
 # 2. investigate the printed telemetry/*.log file the way you'd work Wazuh
 
 # 3. write your verdict, then fill it in
-python -m dealer verdict --out verdict.json
+python -m draghunt verdict --out verdict.json
 
 # 4. grade it against the sealed truth, and record the rep
-python -m dealer grade --truth .groundtruth/<sealed>.json --verdict verdict.json --record
+python -m draghunt grade --truth .groundtruth/<sealed>.json --verdict verdict.json --record
 
 # 5. see how you're trending
-python -m dealer stats
+python -m draghunt stats
 ```
 
 A graded rep looks like this:
 
 ```
-Dealer verdict report — scenario DEMO-BRUTE
+Draghunt verdict report — scenario DEMO-BRUTE
 Score: 100/100   Grade: A — clean read
 
   OK disposition  30.0/30  expected='malicious' got='malicious'
@@ -57,7 +57,7 @@ Score: 100/100   Grade: A — clean read
 And `stats` is the reason to come back:
 
 ```
-Dealer stats
+Draghunt stats
   reps      : 3
   passed    : 3 (100%)
   avg score : 77/100
@@ -70,7 +70,7 @@ Dealer stats
 ## The deck
 
 ```bash
-python -m dealer list
+python -m draghunt list
 ```
 
 Ships with three synthetic demo scenarios (SSH brute force, web shell, DNS exfil), each
@@ -84,7 +84,7 @@ never the one everyone else downloaded.
 A local, zero-dependency dashboard drives the whole loop from the browser:
 
 ```bash
-python -m dealer web        # http://127.0.0.1:8787
+python -m draghunt web        # http://127.0.0.1:8787
 ```
 
 Deal a case, read the synthetic telemetry, submit a verdict, and see it graded,
@@ -97,11 +97,11 @@ The same dashboard is the control center for a real range: it deals and seals a
 case, drives your Kali box over SSH to fire your own attack runner, pulls the
 alerts from your SIEM, grades your verdict, and resets the target between reps.
 Live fire is real as of v0.4, behind an explicit gate: it refuses unless the range
-is configured and you confirm. Fire from the CLI with `dealer deal --scenario S01 --fire`,
+is configured and you confirm. Fire from the CLI with `draghunt deal --scenario S01 --fire`,
 or tick the live-fire box in the dashboard. Set it up with:
 
 ```bash
-python -m dealer init-config   # writes an example range.toml (0600)
+python -m draghunt init-config   # writes an example range.toml (0600)
 ```
 
 See `docs/LIVE-MODE-PLAN.md` for the architecture, the phased build, and the
@@ -110,7 +110,7 @@ config you'll need (Kali, target, SIEM, Proxmox).
 ### Any SIEM, one seam
 
 Everything is SIEM-agnostic except pulling alerts, which lives behind a small
-adapter interface (`dealer/siem`). **Wazuh** is the one shipped adapter; adding
+adapter interface (`draghunt/siem`). **Wazuh** is the one shipped adapter; adding
 Splunk, Elastic, or anything else is a new class, not a fork.
 
 ## Two ways to run
@@ -119,12 +119,12 @@ Splunk, Elastic, or anything else is a new class, not a fork.
    range needed. This is how the demo scenarios above work.
 2. **Against your range.** `deal` seals the same JSON truth, and you fire the matching
    attack from your **own private runner** (e.g. the maintainer's `casefiles-lab`), then
-   investigate the real telemetry in Wazuh. The Dealer never ships attack code; it deals
+   investigate the real telemetry in Wazuh. Draghunt never ships attack code; it deals
    the case and grades the verdict. Your scenarios stay yours.
 
 ## How grading works
 
-Data-driven rubric (`dealer/grader.py`, `WEIGHTS`):
+Data-driven rubric (`draghunt/grader.py`, `WEIGHTS`):
 
 | Dimension   | Weight | Notes |
 |-------------|:------:|-------|
@@ -140,13 +140,13 @@ Exit codes: `0` pass (≥60) / ok, `1` failing grade, `2` bad input — so it sl
 
 | Command | What it does |
 |---------|--------------|
-| `dealer list` | show the scenario deck |
-| `dealer deal [--scenario ID] [--seed N]` | seal a case, drop telemetry, print a blind brief |
-| `dealer verdict --out V.json` | write a blank verdict to fill in |
-| `dealer grade --truth T --verdict V [--record] [--json]` | score it, optionally record |
-| `dealer reset --confirm` | reset the target (snapshot rollback and/or cleanup) |
-| `dealer alerts --case <id>` | pull SIEM alerts for a fired case's window |
-| `dealer stats` | reps, pass rate, streak, weakest tactic |
+| `draghunt list` | show the scenario deck |
+| `draghunt deal [--scenario ID] [--seed N]` | seal a case, drop telemetry, print a blind brief |
+| `draghunt verdict --out V.json` | write a blank verdict to fill in |
+| `draghunt grade --truth T --verdict V [--record] [--json]` | score it, optionally record |
+| `draghunt reset --confirm` | reset the target (snapshot rollback and/or cleanup) |
+| `draghunt alerts --case <id>` | pull SIEM alerts for a fired case's window |
+| `draghunt stats` | reps, pass rate, streak, weakest tactic |
 
 ## Roadmap
 

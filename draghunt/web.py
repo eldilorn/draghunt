@@ -1,4 +1,4 @@
-"""Local web control center for the Dealer (phase 1).
+"""Local web control center for Draghunt (phase 1).
 
 A zero-dependency dashboard on Python's http.server. Bound to 127.0.0.1 only:
 the app can (later) fire real attacks, so nothing on the network may reach it.
@@ -40,7 +40,7 @@ def new_case_id(scenario_id: str, now=None) -> str:
 
 PAGE = """<!doctype html><html lang=en><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>The Dealer</title>
+<title>Draghunt</title>
 <style>
 :root{--bg:#0e1116;--panel:#171c24;--edge:#262d38;--ink:#e6edf3;--dim:#8b949e;
 --ok:#3fb950;--bad:#f85149;--warn:#d29922;--accent:#58a6ff}
@@ -66,7 +66,7 @@ pre{background:#0b0f14;border:1px solid var(--edge);border-radius:8px;padding:12
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:4px 6px;border-bottom:1px solid var(--edge)}
 .big{font-size:26px;font-weight:700}
 </style>
-<header><h1>The Dealer</h1><span class=tag id=mode>control center · phase 1 · nothing fires</span></header>
+<header><h1>Draghunt</h1><span class=tag id=mode>control center · phase 1 · nothing fires</span></header>
 <main>
  <div id=cfgbanner class=banner></div>
 
@@ -211,7 +211,7 @@ def _fire_window(case_id: str) -> dict | None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Dealer/0.3"
+    server_version = "Draghunt/0.3"
 
     def log_message(self, *a):  # quiet
         pass
@@ -357,7 +357,7 @@ def serve(host: str = "127.0.0.1", port: int = 8787) -> None:
     if host not in ("127.0.0.1", "localhost", "::1"):
         raise ValueError("refusing to bind off localhost: the app can fire attacks")
     httpd = ThreadingHTTPServer((host, port), Handler)
-    print(f"Dealer control center on http://{host}:{port}  (Ctrl-C to stop)")
+    print(f"Draghunt control center on http://{host}:{port}  (Ctrl-C to stop)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

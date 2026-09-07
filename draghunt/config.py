@@ -59,7 +59,7 @@ class ResetCfg:
 
 @dataclass
 class RangeConfig:
-    data_dir: str = ".dealer"
+    data_dir: str = ".draghunt"
     attacker: AttackerCfg = field(default_factory=AttackerCfg)
     target: TargetCfg = field(default_factory=TargetCfg)
     runner: RunnerCfg = field(default_factory=RunnerCfg)
@@ -77,12 +77,12 @@ class RangeConfig:
         siem_opts = dict(s.get(siem_adapter, {}))
         # resolve secrets from env if present
         if "password" in siem_opts:
-            siem_opts["password"] = _env_or(siem_opts.get("password"), "DEALER_SIEM_PASSWORD")
+            siem_opts["password"] = _env_or(siem_opts.get("password"), "DRAGHUNT_SIEM_PASSWORD")
         proxmox = dict(rs.get("proxmox", {}))
         if "token_secret" in proxmox:
-            proxmox["token_secret"] = _env_or(proxmox.get("token_secret"), "DEALER_PROXMOX_SECRET")
+            proxmox["token_secret"] = _env_or(proxmox.get("token_secret"), "DRAGHUNT_PROXMOX_SECRET")
         return RangeConfig(
-            data_dir=str(doc.get("control", {}).get("data_dir", ".dealer")),
+            data_dir=str(doc.get("control", {}).get("data_dir", ".draghunt")),
             attacker=AttackerCfg(str(a.get("host", "")), str(a.get("user", "")), str(a.get("ssh_key", ""))),
             target=TargetCfg(str(t.get("host", "")), str(t.get("user", ""))),
             runner=RunnerCfg(str(r.get("dir", "~/casefiles-lab/lab")), str(r.get("entry", "fire.sh"))),
@@ -116,12 +116,12 @@ def load(path: str | Path | None = None) -> RangeConfig:
 
 
 EXAMPLE_TOML = """\
-# range.toml — how the Dealer reaches your lab. Keep this file private (chmod 600).
+# range.toml — how Draghunt reaches your lab. Keep this file private (chmod 600).
 # Secrets can be left blank here and supplied via env instead:
-#   DEALER_SIEM_PASSWORD, DEALER_PROXMOX_SECRET
+#   DRAGHUNT_SIEM_PASSWORD, DRAGHUNT_PROXMOX_SECRET
 
 [control]
-data_dir = ".dealer"
+data_dir = ".draghunt"
 
 [attacker]                       # your Kali box — the app SSHes here to fire
 host    = "192.168.45.75"
@@ -143,7 +143,7 @@ adapter = "wazuh"                # the only shipped adapter today; others plugga
 indexer_url = "https://192.168.45.10:9200"
 index       = "wazuh-alerts-*"
 username    = "admin"
-password    = ""                 # or set DEALER_SIEM_PASSWORD
+password    = ""                 # or set DRAGHUNT_SIEM_PASSWORD
 verify_tls  = false
 
 [reset]
@@ -151,8 +151,8 @@ mode = "both"                    # snapshot | cleanup | both | none
 
 [reset.proxmox]
 api_url      = "https://192.168.45.2:8006"
-token_id     = "root@pam!dealer"
-token_secret = ""                # or set DEALER_PROXMOX_SECRET
+token_id     = "root@pam!draghunt"
+token_secret = ""                # or set DRAGHUNT_PROXMOX_SECRET
 node         = "pve"
 vmid         = 101
 snapshot     = "clean"

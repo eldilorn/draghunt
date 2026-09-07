@@ -1,6 +1,6 @@
 """SIEM adapter seam.
 
-The Dealer is SIEM-agnostic everywhere except one place: pulling the alerts for
+Draghunt is SIEM-agnostic everywhere except one place: pulling the alerts for
 an investigation window. That single operation lives behind this interface, so
 Wazuh is just the first adapter and any other SIEM (Splunk, Elastic, ...) is a
 new class, not a fork of the app.
