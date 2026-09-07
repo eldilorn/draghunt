@@ -6,6 +6,6 @@
   "account": "svc-backup",
   "succeeded": true,
   "disposition": "malicious",
-  "dealt_utc": "2026-09-04T06:00:00Z",
+  "laid_utc": "2026-09-04T06:00:00Z",
   "notes": "Synthetic example. Not lab content. RFC 5737 / RFC 2606 documentation ranges only."
 }

@@ -62,7 +62,7 @@ class Stats:
 
     def as_text(self) -> str:
         if self.attempts == 0:
-            return "No reps recorded yet. Deal a case and grade it with --record."
+            return "No reps recorded yet. Lay a drag and grade it with --record."
         lines = [
             "Draghunt stats",
             f"  reps      : {self.attempts}",
@@ -76,6 +76,17 @@ class Stats:
                 flag = "   <- weakest" if tactic == self.weakest_tactic else ""
                 lines.append(f"      {tactic:<20} {avg:>4.0f}/100{flag}")
         return "\n".join(lines)
+
+    def as_dict(self) -> dict:
+        return {
+            "attempts": self.attempts,
+            "passed": self.passed,
+            "pass_rate": round(self.pass_rate, 1),
+            "streak": self.streak,
+            "avg_score": round(self.avg_score, 1),
+            "weakest_tactic": self.weakest_tactic,
+            "by_tactic": {k: round(v, 1) for k, v in self.by_tactic.items()},
+        }
 
 
 def stats(store: Path | None = None) -> Stats:
@@ -109,3 +120,9 @@ def stats(store: Path | None = None) -> Stats:
         weakest_tactic=weakest,
         by_tactic=by_avg,
     )
+
+
+def recent(n: int = 20, store: Path | None = None) -> list[dict]:
+    """The last n graded reps, oldest-first, for the score-history chart."""
+    rows = load(store)
+    return rows[-n:]

@@ -2,7 +2,7 @@
 
 Two documents flow through the grader:
 
-* GroundTruth — the sealed truth Draghunt produces when it deals a case.
+* GroundTruth — the sealed truth Draghunt produces when it lays a case.
   It is written blind and never shown to the analyst until after they submit.
 * Verdict — what the analyst submits after investigating the telemetry.
 
@@ -38,9 +38,9 @@ def _require(doc: dict[str, Any], key: str, kind: str) -> Any:
 
 @dataclass(frozen=True)
 class GroundTruth:
-    """The sealed truth for one dealt case.
+    """The sealed truth for one laid case.
 
-    scenario_id  Stable id of the dealt scenario (e.g. "S01"). Opaque here.
+    scenario_id  Stable id of the laid scenario (e.g. "S01"). Opaque here.
     technique    MITRE ATT&CK technique id, e.g. "T1110" or "T1110.001".
     tactic       ATT&CK tactic slug, e.g. "credential-access".
     source_ip    Origin of the activity the analyst should identify.
@@ -56,7 +56,7 @@ class GroundTruth:
     succeeded: bool
     disposition: str
     account: str | None = None
-    dealt_utc: str | None = None
+    laid_utc: str | None = None
     notes: str | None = None
 
     @staticmethod
@@ -75,7 +75,7 @@ class GroundTruth:
             succeeded=bool(_require(doc, "succeeded", kind)),
             disposition=disposition,
             account=(str(doc["account"]) if doc.get("account") is not None else None),
-            dealt_utc=(str(doc["dealt_utc"]) if doc.get("dealt_utc") else None),
+            laid_utc=(str(doc["laid_utc"]) if doc.get("laid_utc") else None),
             notes=(str(doc["notes"]) if doc.get("notes") else None),
         )
 

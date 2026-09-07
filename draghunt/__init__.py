@@ -1,23 +1,23 @@
 """Draghunt — blue-team investigation reps you own end to end.
 
-The loop: deal a case (sealed truth), investigate telemetry blind, submit a
+The loop: lay a drag (sealed truth), investigate telemetry blind, submit a
 verdict, get it graded, track your reps over time.
 
 Public API:
-    from draghunt import deal, generate_telemetry, grade, GroundTruth, Verdict
+    from draghunt import lay, generate_telemetry, grade, GroundTruth, Verdict
 """
 from .schema import GroundTruth, Verdict, SchemaError, load_ground_truth, load_verdict
 from .grader import grade, Report, LineItem
-from .catalog import deal, load_catalog, Scenario, DealtCase
+from .catalog import lay, load_catalog, Scenario, Hunt
 from .telemetry import generate as generate_telemetry
 from .history import record, stats, Stats
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 __all__ = [
     "grade", "Report", "LineItem",
     "GroundTruth", "Verdict", "SchemaError",
     "load_ground_truth", "load_verdict",
-    "deal", "load_catalog", "Scenario", "DealtCase",
+    "lay", "load_catalog", "Scenario", "Hunt",
     "generate_telemetry",
     "record", "stats", "Stats",
 ]

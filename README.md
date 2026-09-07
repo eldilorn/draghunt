@@ -3,18 +3,18 @@
 Realistic blue-team investigation reps in **your own lab**, not on a stranger's frozen
 incident. You own the whole loop:
 
-> deal → seal ground truth → investigate telemetry blind → write a verdict → grade → track
+> lay → seal ground truth → investigate telemetry blind → write a verdict → grade → track
 
 LetsDefend and CyberDefenders hand you a stranger's frozen pcap that everyone else also
 downloaded, so you never own the ground truth and can't tune a detection against it. The
-Draghunt flips that: it deals *you* a randomized, MITRE-mapped case, seals the truth before
+Draghunt flips that: it lays *you* a randomized, MITRE-mapped case, seals the truth before
 you look, and grades your verdict against it.
 
 ## Status
 
-**v0.7 — full live loop plus an installable desktop app.** Deal a case, get
+**v0.8 — full live loop, a scores dashboard, and an installable desktop app.** Lay a drag, get
 synthetic telemetry to investigate, submit a verdict, get graded, and track your reps
-over time. When you have a range, the same `deal` bridges to your own attack runner
+over time. When you have a range, the same `lay` bridges to your own attack runner
 instead of the synthetic telemetry (see "Two ways to run" below).
 
 * **SIEM:** Wazuh is the target for the live path. It's the maintainer's homelab stack.
@@ -26,8 +26,8 @@ instead of the synthetic telemetry (see "Two ways to run" below).
 No install, no dependencies — Python 3.11+ standard library only.
 
 ```bash
-# 1. deal a case: seals the truth, drops telemetry to investigate, prints a blind brief
-python -m draghunt deal --scenario DEMO-BRUTE
+# 1. lay a drag: seals the truth, drops telemetry to investigate, prints a blind brief
+python -m draghunt lay --scenario DEMO-BRUTE
 
 # 2. investigate the printed telemetry/*.log file the way you'd work Wazuh
 
@@ -74,7 +74,7 @@ python -m draghunt list
 ```
 
 Ships with three synthetic demo scenarios (SSH brute force, web shell, DNS exfil), each
-mapped to ATT&CK. Every deal randomizes the source, the account, and whether the attack
+mapped to ATT&CK. Every lay randomizes the source, the account, and whether the attack
 lands, and seals that truth blind — so no two reps are the same and the answer key is
 never the one everyone else downloaded.
 
@@ -87,7 +87,7 @@ A local, zero-dependency dashboard drives the whole loop from the browser:
 python -m draghunt web        # http://127.0.0.1:8787
 ```
 
-Deal a case, read the synthetic telemetry, submit a verdict, and see it graded,
+Lay a drag, read the synthetic telemetry, submit a verdict, and see it graded,
 all in one page. It binds to localhost only, on purpose: live mode can fire real
 attacks, so nothing on your network may reach the button.
 
@@ -105,11 +105,11 @@ See `docs/PACKAGING.md` for the native-window backend and the AppImage build.
 
 ## Live mode (planned, phased)
 
-The same dashboard is the control center for a real range: it deals and seals a
+The same dashboard is the control center for a real range: it lays and seals a
 case, drives your Kali box over SSH to fire your own attack runner, pulls the
 alerts from your SIEM, grades your verdict, and resets the target between reps.
 Live fire is real as of v0.4, behind an explicit gate: it refuses unless the range
-is configured and you confirm. Fire from the CLI with `draghunt deal --scenario S01 --fire`,
+is configured and you confirm. Fire from the CLI with `draghunt lay --scenario S01 --fire`,
 or tick the live-fire box in the dashboard. Set it up with:
 
 ```bash
@@ -127,11 +127,11 @@ Splunk, Elastic, or anything else is a new class, not a fork.
 
 ## Two ways to run
 
-1. **Offline (default).** `deal` writes synthetic telemetry you investigate directly. No
+1. **Offline (default).** `lay` writes synthetic telemetry you investigate directly. No
    range needed. This is how the demo scenarios above work.
-2. **Against your range.** `deal` seals the same JSON truth, and you fire the matching
+2. **Against your range.** `lay` seals the same JSON truth, and you fire the matching
    attack from your **own private runner** (e.g. the maintainer's `casefiles-lab`), then
-   investigate the real telemetry in Wazuh. Draghunt never ships attack code; it deals
+   investigate the real telemetry in Wazuh. Draghunt never ships attack code; it lays
    the case and grades the verdict. Your scenarios stay yours.
 
 ## How grading works
@@ -153,7 +153,7 @@ Exit codes: `0` pass (≥60) / ok, `1` failing grade, `2` bad input — so it sl
 | Command | What it does |
 |---------|--------------|
 | `draghunt list` | show the scenario deck |
-| `draghunt deal [--scenario ID] [--seed N]` | seal a case, drop telemetry, print a blind brief |
+| `draghunt lay [--scenario ID] [--seed N]` | seal a case, drop telemetry, print a blind brief |
 | `draghunt verdict --out V.json` | write a blank verdict to fill in |
 | `draghunt grade --truth T --verdict V [--record] [--json]` | score it, optionally record |
 | `draghunt reset --confirm` | reset the target (snapshot rollback and/or cleanup) |
@@ -163,10 +163,10 @@ Exit codes: `0` pass (≥60) / ok, `1` failing grade, `2` bad input — so it sl
 ## Roadmap
 
 - [x] Grading core with a data-driven rubric
-- [x] `deal` — seal a case to JSON, deterministic with `--seed`
+- [x] `lay` — seal a case to JSON, deterministic with `--seed`
 - [x] Synthetic telemetry so a rep is playable offline
 - [x] Local tracking (`stats`): reps, pass rate, streak, weakest tactic
-- [ ] Bridge `deal` to fire a user-supplied runner and pull real Wazuh telemetry
+- [ ] Bridge `lay` to fire a user-supplied runner and pull real Wazuh telemetry
 - [ ] Benign decoy scenarios (so "malicious vs benign" is a real call, not a given)
 - [ ] Hosted grading/tracking layer (FastAPI + SQLite) syncing the same records
 

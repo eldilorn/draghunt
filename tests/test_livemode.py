@@ -5,7 +5,7 @@ from pathlib import Path
 
 from draghunt.config import RangeConfig, load, EXAMPLE_TOML, ConfigError
 from draghunt.siem import available, get_adapter, SiemAdapter
-from draghunt.catalog import deal
+from draghunt.catalog import lay
 from draghunt.fire import build_plan, execute, FirePlan, FireResult, FireBlocked
 
 
@@ -61,7 +61,7 @@ class TestSiemSeam(unittest.TestCase):
 
 class TestFirePlan(unittest.TestCase):
     def test_plan_not_ready_with_empty_config(self):
-        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig())
+        plan = build_plan(lay("DEMO-BRUTE", seed=7), RangeConfig())
         self.assertFalse(plan.ready)
         self.assertIn("attacker.host", plan.gaps)
 
@@ -69,23 +69,23 @@ class TestFirePlan(unittest.TestCase):
         cfg = RangeConfig()
         cfg.attacker.host = "10.0.0.5"; cfg.attacker.user = "kali"
         cfg.target.host = "10.0.0.6"
-        plan = build_plan(deal("DEMO-BRUTE", seed=7), cfg)
+        plan = build_plan(lay("DEMO-BRUTE", seed=7), cfg)
         self.assertTrue(plan.ready)
         self.assertEqual(plan.gaps, [])
 
     def test_plan_injects_sealed_params(self):
-        case = deal("DEMO-BRUTE", seed=7)
+        case = lay("DEMO-BRUTE", seed=7)
         plan = build_plan(case, RangeConfig())
         self.assertEqual(plan.params["ACCOUNT"], case.ground_truth.account)
         self.assertEqual(plan.params["SUCCEED"], "yes" if case.ground_truth.succeeded else "no")
         self.assertEqual(plan.params["DRY_RUN"], "1")  # never fires in phase 1
 
     def test_dry_plan_marks_dry_run(self):
-        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig(), live=False)
+        plan = build_plan(lay("DEMO-BRUTE", seed=7), RangeConfig(), live=False)
         self.assertEqual(plan.params["DRY_RUN"], "1")
 
     def test_live_plan_flips_dry_run(self):
-        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig(), live=True)
+        plan = build_plan(lay("DEMO-BRUTE", seed=7), RangeConfig(), live=True)
         self.assertEqual(plan.params["DRY_RUN"], "0")
 
 
@@ -93,19 +93,19 @@ class TestFireGates(unittest.TestCase):
     def _ready_live_plan(self):
         cfg = RangeConfig()
         cfg.attacker.host = "10.0.0.5"; cfg.attacker.user = "kali"; cfg.target.host = "10.0.0.6"
-        return build_plan(deal("DEMO-BRUTE", seed=7), cfg, live=True)
+        return build_plan(lay("DEMO-BRUTE", seed=7), cfg, live=True)
 
     def test_execute_without_confirm_refuses(self):
         with self.assertRaises(FireBlocked):
             execute(self._ready_live_plan(), confirm=False)
 
     def test_execute_dry_plan_refuses(self):
-        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig(), live=False)
+        plan = build_plan(lay("DEMO-BRUTE", seed=7), RangeConfig(), live=False)
         with self.assertRaises(FireBlocked):
             execute(plan, confirm=True)
 
     def test_execute_unready_live_plan_refuses(self):
-        plan = build_plan(deal("DEMO-BRUTE", seed=7), RangeConfig(), live=True)
+        plan = build_plan(lay("DEMO-BRUTE", seed=7), RangeConfig(), live=True)
         with self.assertRaises(FireBlocked):
             execute(plan, confirm=True)
 
@@ -142,3 +142,14 @@ class TestCaseId(unittest.TestCase):
         self.assertNotEqual(a, b)          # no collision even at the same instant
         self.assertTrue(_CASE_ID.match(a))
         self.assertTrue(_CASE_ID.match(b))
+
+
+class TestScores(unittest.TestCase):
+    def test_stats_as_dict_shape(self):
+        from draghunt.history import Stats
+        s = Stats(3, 2, 66.7, 1, 80.0, "exfiltration", {"exfiltration": 60.0})
+        d = s.as_dict()
+        for k in ("attempts", "passed", "pass_rate", "streak", "avg_score",
+                  "weakest_tactic", "by_tactic"):
+            self.assertIn(k, d)
+        self.assertEqual(d["weakest_tactic"], "exfiltration")

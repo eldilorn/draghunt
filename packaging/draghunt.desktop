@@ -2,7 +2,7 @@
 Type=Application
 Name=Draghunt
 GenericName=Blue-team investigation reps
-Comment=Deal a MITRE-mapped case, investigate blind, get graded in your own lab
+Comment=Lay a MITRE-mapped case, investigate blind, get graded in your own lab
 Exec=draghunt desktop
 Icon=draghunt
 Terminal=false

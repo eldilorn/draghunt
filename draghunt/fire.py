@@ -1,11 +1,11 @@
-"""Turn a dealt case into a fire plan, and (phase 2) actually fire it.
+"""Turn a laid case into a fire plan, and (phase 2) actually fire it.
 
 Safety model:
 * Dry-run is the default. `build_plan(..., live=False)` bakes DRY_RUN=1 into the
   command, so the attacker box prints its plan and touches nothing.
 * Live fire requires BOTH an explicit `confirm=True` from the caller AND a fully
   configured range. Missing either, `execute()` refuses and raises. There is no
-  implicit path from a dealt case to a real attack.
+  implicit path from a laid case to a real attack.
 * Every fire records its start/finish window, which is exactly what the SIEM
   alert pull (phase 4) needs to scope the investigation.
 """
@@ -17,7 +17,7 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from .catalog import DealtCase
+from .catalog import Hunt
 from .config import RangeConfig
 
 
@@ -71,7 +71,7 @@ class FireResult:
                 "end": (e + pad).strftime("%Y-%m-%dT%H:%M:%SZ")}
 
 
-def build_plan(case: DealtCase, cfg: RangeConfig, live: bool = False) -> FirePlan:
+def build_plan(case: Hunt, cfg: RangeConfig, live: bool = False) -> FirePlan:
     gt = case.ground_truth
     src = cfg.attacker.host or "<attacker-host>"
     params = {

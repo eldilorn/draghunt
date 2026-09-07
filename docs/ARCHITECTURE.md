@@ -8,7 +8,7 @@ can actually run, and the thing that pulls you back is your trend over reps. Bot
 exist for this to be a product; v0.2 builds them around the grader.
 
 ```
-  deal ─────────────► seal (JSON ground truth, 0600, git-ignored)
+  lay ─────────────► seal (JSON ground truth, 0600, git-ignored)
    │                        │
    ├─► synthetic telemetry ─┼──► investigate blind
    │   OR your own runner   │           │
@@ -24,11 +24,11 @@ exist for this to be a product; v0.2 builds them around the grader.
 | File                  | Responsibility |
 |-----------------------|----------------|
 | `draghunt/schema.py`    | `GroundTruth` / `Verdict` contracts + validation. No deps. |
-| `draghunt/catalog.py`   | Load the public deck; `deal()` randomizes (seeded) and seals a case. |
-| `draghunt/telemetry.py` | Synthetic, investigable logs for a dealt case. No private content. |
+| `draghunt/catalog.py`   | Load the public deck; `lay()` randomizes (seeded) and seals a case. |
+| `draghunt/telemetry.py` | Synthetic, investigable logs for a laid case. No private content. |
 | `draghunt/grader.py`    | Data-driven rubric → `Report`. All scoring policy lives here. |
 | `draghunt/history.py`   | Append reps to a local JSONL ledger; compute `stats`. |
-| `draghunt/cli.py`       | `list / deal / verdict / grade / stats`. |
+| `draghunt/cli.py`       | `list / lay / verdict / grade / stats`. |
 | `draghunt/data/catalog/`| Public scenarios: ATT&CK metadata + randomization knobs only. |
 
 ## The public/private boundary
@@ -38,7 +38,7 @@ over, a telemetry recipe. It contains **no attack commands**. Two run modes keep
 boundary clean:
 
 * **Offline:** `telemetry.py` synthesizes logs from the sealed truth. Fully public.
-* **Live:** `deal` seals the truth, then the user fires their *own* private runner
+* **Live:** `lay` seals the truth, then the user fires their *own* private runner
   (the maintainer's `casefiles-lab`) against a real range. The product orchestrates and
   grades; it never carries the attack content.
 
@@ -47,14 +47,14 @@ ever being vendored.
 
 ## Determinism
 
-`deal(seed=N)` is reproducible: same seed, same case. When no seed is given one is drawn
-and written into the sealed truth's `notes`, so any dealt case can be re-dealt for review
+`lay(seed=N)` is reproducible: same seed, same case. When no seed is given one is drawn
+and written into the sealed truth's `notes`, so any laid case can be re-laid for review
 or bug reports.
 
 ## Deliberately not built yet
 
 * **Live bridge**: fire a user runner and pull real Wazuh telemetry. The seam exists
-  (deal already seals the JSON the runner would need); the fire-and-collect step is next.
+  (lay already seals the JSON the runner would need); the fire-and-collect step is next.
 * **Benign decoys**: today every demo case is malicious, so the disposition call is real
   but not yet adversarial. Decoy scenarios make "malicious vs benign" a genuine decision.
 * **Hosted layer** (FastAPI + SQLite): syncs the same JSONL records. Reserved in

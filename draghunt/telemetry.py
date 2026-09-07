@@ -1,4 +1,4 @@
-"""Synthetic telemetry for a dealt case.
+"""Synthetic telemetry for a laid case.
 
 So a rep is playable with no live range: given a sealed truth, emit log lines an
 analyst can actually investigate. The signal that matches the truth is buried in
@@ -13,7 +13,7 @@ from __future__ import annotations
 import random
 from datetime import datetime, timedelta, timezone
 
-from .catalog import DealtCase
+from .catalog import Hunt
 
 _BENIGN_IPS = ["10.0.0.14", "10.0.0.31", "10.0.0.52", "192.168.1.20"]
 _BENIGN_USERS = ["alice", "bob", "root", "backup"]
@@ -31,10 +31,10 @@ def _stamp(t: datetime) -> str:
     return t.strftime("%b %d %H:%M:%S")
 
 
-def _auth_bruteforce(case: DealtCase, rng: random.Random, n: int) -> list[str]:
+def _auth_bruteforce(case: Hunt, rng: random.Random, n: int) -> list[str]:
     gt = case.ground_truth
     host = "moria"
-    t = _base_time(gt.dealt_utc, rng)
+    t = _base_time(gt.laid_utc, rng)
     lines: list[str] = []
     for _ in range(n):
         t += timedelta(seconds=rng.randint(1, 6))
@@ -63,11 +63,11 @@ def _auth_bruteforce(case: DealtCase, rng: random.Random, n: int) -> list[str]:
     return lines
 
 
-def _web_shell(case: DealtCase, rng: random.Random, n: int) -> list[str]:
+def _web_shell(case: Hunt, rng: random.Random, n: int) -> list[str]:
     gt = case.ground_truth
     paths = ["/", "/index.php", "/about", "/login.php", "/assets/app.js", "/favicon.ico"]
     lines: list[str] = []
-    t = _base_time(gt.dealt_utc, rng)
+    t = _base_time(gt.laid_utc, rng)
     shell = f"/uploads/{rng.choice(['img','tmp','data'])}{rng.randint(100,999)}.php"
     for _ in range(n):
         t += timedelta(seconds=rng.randint(1, 8))
@@ -93,12 +93,12 @@ def _web_shell(case: DealtCase, rng: random.Random, n: int) -> list[str]:
     return lines
 
 
-def _dns_exfil(case: DealtCase, rng: random.Random, n: int) -> list[str]:
+def _dns_exfil(case: Hunt, rng: random.Random, n: int) -> list[str]:
     gt = case.ground_truth
     domains = ["updates.example.com", "cdn.example.net", "time.example.org"]
     c2 = "sync.example.com"
     lines: list[str] = []
-    t = _base_time(gt.dealt_utc, rng)
+    t = _base_time(gt.laid_utc, rng)
     for _ in range(n):
         t += timedelta(seconds=rng.randint(1, 5))
         if rng.random() < 0.55:  # exfil: long encoded labels to one domain from the victim
@@ -123,8 +123,8 @@ _GENERATORS = {
 }
 
 
-def generate(case: DealtCase, seed: int | None = None) -> list[str]:
-    """Produce synthetic telemetry lines for a dealt case."""
+def generate(case: Hunt, seed: int | None = None) -> list[str]:
+    """Produce synthetic telemetry lines for a laid case."""
     spec = case.scenario.telemetry
     gen = _GENERATORS.get(spec.get("generator", ""))
     if gen is None:

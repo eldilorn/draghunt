@@ -10,7 +10,7 @@ The laptop never attacks anything directly. It tells Kali what to fire.
 ```
    LAPTOP (control)          KALI (attacker)        TARGET VM(s)      WAZUH
    - Draghunt web app  --SSH-> - runners            - victims          - SIEM
-   - click "deal"            - fires attack  --->  (agent ships  ---> - you
+   - click "lay"            - fires attack  --->  (agent ships  ---> - you
    - seals the truth                               telemetry)          investigate
    - grades verdict  <----------------------------  <-- alerts via indexer API
    - tracks reps
@@ -37,7 +37,7 @@ The laptop never attacks anything directly. It tells Kali what to fire.
 
 ## Phased build (each phase is runnable and safe on its own)
 
-1. **Web skeleton + dry-run deal.** Dashboard runs locally. Click deal -> seals
+1. **Web skeleton + dry-run lay.** Dashboard runs locally. Click lay -> seals
    truth, SSHes to Kali, Kali prints the plan only. Nothing fires. Grading and
    stats wired in from here.
 2. **Live fire.** DONE. `--fire` (CLI) or the live-fire checkbox (web) turns the
@@ -45,7 +45,7 @@ The laptop never attacks anything directly. It tells Kali what to fire.
    the caller confirms. Records the investigation window for the SIEM pull.
 3. **Reset.** DONE. Proxmox snapshot rollback (gated, names the VM) and/or a
    cleanup job delegated to the private runner (ACTION=cleanup over SSH), per
-   reset.mode. `draghunt reset --confirm`, or `deal --fire --reset` as step zero.
+   reset.mode. `draghunt reset --confirm`, or `lay --fire --reset` as step zero.
 4. **SIEM alert pull.** DONE. Dashboard and CLI query the configured SIEM adapter
    for the fired case's window and show the alerts. `draghunt alerts --case <id>`.
    Later home of "did my detection rule fire?".

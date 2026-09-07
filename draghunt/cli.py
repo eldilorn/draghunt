@@ -1,14 +1,14 @@
 """`draghunt` — the investigation-rep loop.
 
     draghunt list                         show the deck
-    draghunt deal [--scenario ID]         seal a case, drop telemetry, print a blind brief
+    draghunt lay [--scenario ID]         seal a case, drop telemetry, print a blind brief
     draghunt verdict --out V.json         write a blank verdict to fill in
     draghunt grade --truth T --verdict V  score it, optionally --record
     draghunt stats                        reps, pass rate, streak, weakest tactic
 
 A full offline rep needs no live range:
 
-    draghunt deal --scenario DEMO-BRUTE
+    draghunt lay --scenario DEMO-BRUTE
     # investigate the printed telemetry file, then:
     draghunt verdict --out my_verdict.json      # edit it
     draghunt grade --truth <sealed> --verdict my_verdict.json --record
@@ -47,9 +47,9 @@ def _cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_deal(args: argparse.Namespace) -> int:
+def _cmd_lay(args: argparse.Namespace) -> int:
     try:
-        case = catalog_mod.deal(scenario_id=args.scenario, seed=args.seed)
+        case = catalog_mod.lay(scenario_id=args.scenario, seed=args.seed)
     except SchemaError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -239,13 +239,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("list", help="show the scenario deck").set_defaults(func=_cmd_list)
 
-    d = sub.add_parser("deal", help="seal a case, drop telemetry, print a blind brief")
+    d = sub.add_parser("lay", help="seal a case, drop telemetry, print a blind brief")
     d.add_argument("--scenario", help="scenario id (default: random)")
     d.add_argument("--seed", type=int, help="deterministic seed (default: random)")
     d.add_argument("--no-telemetry", action="store_true", help="seal only, no synthetic logs")
     d.add_argument("--fire", action="store_true", help="LIVE: fire against the configured range (needs range.toml)")
     d.add_argument("--reset", action="store_true", help="reset the target first (snapshot/cleanup per range.toml)")
-    d.set_defaults(func=_cmd_deal)
+    d.set_defaults(func=_cmd_lay)
 
     v = sub.add_parser("verdict", help="write a blank verdict template")
     v.add_argument("--out", default="verdict.json", help="output path (default: verdict.json)")

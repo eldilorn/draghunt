@@ -1,13 +1,13 @@
-"""The deck: load public scenarios and deal one into a sealed ground truth.
+"""The deck: load public scenarios and lay one into a sealed ground truth.
 
 A *scenario* here is metadata only — an ATT&CK mapping, a set of randomizable
 knobs, and a telemetry recipe. It contains no attack commands. The actual
 execution against a live range is delegated to the user's own private runner;
-this module only decides *what* case to deal and seals the truth of it.
+this module only decides *what* case to lay and seals the truth of it.
 
-`deal()` is deterministic given a seed, so a case can be re-dealt for testing or
+`lay()` is deterministic given a seed, so a case can be re-laid for testing or
 review. When no seed is passed one is drawn and returned, then written into the
-sealed truth, so any dealt case is reproducible after the fact.
+sealed truth, so any laid case is reproducible after the fact.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ class Scenario:
                 source_pool=list(doc["source_pool"]),
                 succeed_prob=float(doc.get("succeed_prob", 0.5)),
                 telemetry=dict(doc.get("telemetry") or {}),
-                brief=str(doc.get("brief", "A case has been dealt. Investigate.")),
+                brief=str(doc.get("brief", "A drag has been laid. Investigate.")),
             )
         except (KeyError, ValueError, TypeError) as exc:
             raise SchemaError(f"bad scenario '{doc.get('id', '?')}': {exc}") from exc
@@ -74,8 +74,8 @@ def _now_utc() -> str:
 
 
 @dataclass
-class DealtCase:
-    """One dealt case: the sealed truth plus the blind brief the analyst sees."""
+class Hunt:
+    """One laid case: the sealed truth plus the blind brief the analyst sees."""
 
     ground_truth: GroundTruth
     scenario: Scenario
@@ -86,19 +86,19 @@ class DealtCase:
     def blind_brief(self) -> str:
         s = self.scenario
         return (
-            f"Case dealt — {s.id}\n"
+            f"Drag laid — {s.id}\n"
             f"  difficulty : {s.difficulty}\n"
-            f"  dealt (UTC): {self.ground_truth.dealt_utc}\n"
+            f"  laid (UTC): {self.ground_truth.laid_utc}\n"
             f"  telemetry  : {s.telemetry.get('log_source', 'unknown')}\n\n"
             f"{s.brief}\n"
         )
 
 
-def deal(
+def lay(
     scenario_id: str | None = None,
     seed: int | None = None,
     catalog_dir: Path | None = None,
-) -> DealtCase:
+) -> Hunt:
     deck = load_catalog(catalog_dir)
 
     if seed is None:
@@ -126,10 +126,10 @@ def deal(
         account=account,
         succeeded=succeeded,
         disposition=scenario.disposition,
-        dealt_utc=_now_utc(),
+        laid_utc=_now_utc(),
         notes=f"synthetic demo case; seed={seed}; variant={variant}",
     )
-    return DealtCase(ground_truth=gt, scenario=scenario, seed=seed, variant=variant)
+    return Hunt(ground_truth=gt, scenario=scenario, seed=seed, variant=variant)
 
 
 def seal_dict(gt: GroundTruth) -> dict[str, Any]:
@@ -142,6 +142,6 @@ def seal_dict(gt: GroundTruth) -> dict[str, Any]:
         "account": gt.account,
         "succeeded": gt.succeeded,
         "disposition": gt.disposition,
-        "dealt_utc": gt.dealt_utc,
+        "laid_utc": gt.laid_utc,
         "notes": gt.notes,
     }
