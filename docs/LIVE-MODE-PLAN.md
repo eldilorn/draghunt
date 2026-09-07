@@ -1,7 +1,7 @@
 # Live mode — control-center architecture (planning)
 
-Status: **phases 1-2 built.** Live fire exists behind an explicit gate (config +
-confirm required). Phases 3-4 (reset, SIEM pull) and 5 (packaging) remain.
+Status: **phases 1, 2, 4 built.** Live fire is gated (config + confirm). SIEM alert
+pull works via the adapter seam (Wazuh). Phase 3 (reset) and 5 (packaging) remain.
 
 ## The planes
 
@@ -45,8 +45,9 @@ The laptop never attacks anything directly. It tells Kali what to fire.
    the caller confirms. Records the investigation window for the SIEM pull.
 3. **Reset.** Proxmox snapshot revert as step zero + runner cleanup, so reps run
    against a clean box. Lands before drift accumulates.
-4. **Wazuh alert pull.** Dashboard queries the indexer and shows the window's
-   alerts inline. Later home of "did my detection rule fire?".
+4. **SIEM alert pull.** DONE. Dashboard and CLI query the configured SIEM adapter
+   for the fired case's window and show the alerts. `dealer alerts --case <id>`.
+   Later home of "did my detection rule fire?".
 
 ## Config the app will need (one file, laptop, tight perms, never committed)
 

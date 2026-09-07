@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -21,7 +22,7 @@ from . import telemetry as telemetry_mod
 from . import config as config_mod
 from . import fire as fire_mod
 from .fire import FireBlocked
-from .siem import available as siem_available
+from .siem import available as siem_available, get_adapter
 from .grader import grade
 from .schema import Verdict, load_ground_truth, SchemaError
 from . import history as history_mod
@@ -29,6 +30,11 @@ from . import history as history_mod
 SEAL_DIR = Path(".groundtruth")
 TELEMETRY_DIR = Path("telemetry")
 _CASE_ID = re.compile(r"^[0-9]{8}-[0-9]{6}-[A-Z0-9-]+$")
+
+
+def new_case_id(scenario_id: str, now=None) -> str:
+    stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%d-%H%M%S")
+    return f"{stamp}-{scenario_id}-{secrets.token_hex(3).upper()}"
 
 PAGE = """<!doctype html><html lang=en><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
@@ -77,8 +83,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
   <pre id=brief></pre>
   <h2>Fire plan (dry run)</h2>
   <pre id=fireplan></pre>
-  <h2>Telemetry to investigate (synthetic)</h2>
+  <h2 id=telhead>Telemetry to investigate (synthetic)</h2>
   <pre id=telemetry></pre>
+  <div id=alertsbox class=hidden>
+   <h2>SIEM alerts <button id=pullbtn class=ghost>Pull from SIEM</button> <span id=alertstatus class=tag></span></h2>
+   <table id=alerts></table>
+  </div>
  </div>
 
  <div class="panel hidden" id=verdictpanel>
@@ -119,6 +129,8 @@ async function boot(){
  else{b.className='banner warn';b.textContent=`Dry-run only — range not configured (${s.gaps.join(', ')}). Offline reps work now; add range.toml for live fire.`;}
  $('firelive').disabled=!s.fire_ready;
  renderStats(s.stats);
+ try{const h=await api('/api/siem-health');const b=$('cfgbanner');
+  b.textContent+=`  ·  SIEM ${h.adapter}: ${h.ok?'reachable':'not reachable ('+h.detail+')'}`;}catch(e){}
 }
 function renderStats(t){$('stats').textContent=t||'no reps yet';}
 $('dealbtn').onclick=async()=>{
@@ -130,10 +142,13 @@ $('dealbtn').onclick=async()=>{
   const c=await api('/api/deal',body);CASE=c.case_id;
   $('caseid').textContent=c.case_id;$('brief').textContent=c.brief;$('fireplan').textContent=c.fire_plan;
   if(c.fired){const r=c.fire_result;
-   $('telemetry').textContent='LIVE FIRE  rc='+r.returncode+(r.error?(' · error='+r.error):' · ok')
+   $('telhead').textContent='Live fire';
+   $('telemetry').textContent='rc='+r.returncode+(r.error?(' · error='+r.error):' · ok')
     +'\\ninvestigate your SIEM for  '+r.window.start+'  ..  '+r.window.end
     +(r.stdout?('\\n\\n'+r.stdout):'');
-  }else{$('telemetry').textContent=c.telemetry.join('\\n');}
+   $('alertsbox').classList.remove('hidden');$('alerts').innerHTML='';$('alertstatus').textContent='';
+  }else{$('telhead').textContent='Telemetry to investigate (synthetic)';
+   $('telemetry').textContent=c.telemetry.join('\\n');$('alertsbox').classList.add('hidden');}
   $('casepanel').classList.remove('hidden');$('verdictpanel').classList.remove('hidden');
   $('resultpanel').classList.add('hidden');
   window.scrollTo(0,document.body.scrollHeight);
@@ -157,6 +172,15 @@ $('gradebtn').onclick=async()=>{
  renderStats(r.stats);
  window.scrollTo(0,document.body.scrollHeight);
 };
+$('pullbtn').onclick=async()=>{
+ if(!CASE)return;
+ $('alertstatus').textContent='querying…';
+ try{const r=await api('/api/alerts',{case_id:CASE});
+  $('alertstatus').textContent=r.count+' alerts in '+r.window.start+' .. '+r.window.end;
+  $('alerts').innerHTML='<tr><th>time<th>rule<th>lvl<th>source<th>description</tr>'+
+   r.alerts.map(a=>`<tr><td>${a.timestamp}<td>${a.rule}<td>${a.level}<td>${a.source}<td>${a.description}</tr>`).join('');
+ }catch(e){$('alertstatus').textContent='error: '+e.message;}
+};
 boot();
 </script>
 """
@@ -169,6 +193,15 @@ def _case_path(case_id: str) -> Path:
     if p.parent != SEAL_DIR.resolve():
         raise SchemaError("path escape")
     return p
+
+
+def _fire_window(case_id: str) -> dict | None:
+    if not _CASE_ID.match(case_id):
+        raise SchemaError("bad case id")
+    p = SEAL_DIR / f"{case_id}.fire.json"
+    if not p.exists():
+        return None
+    return json.loads(p.read_text()).get("window")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -196,6 +229,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, PAGE.encode(), "text/html; charset=utf-8")
         elif self.path == "/api/state":
             self._state()
+        elif self.path == "/api/siem-health":
+            self._siem_health()
         else:
             self._json(404, {"error": "not found"})
 
@@ -205,6 +240,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._deal(self._read_body())
             elif self.path == "/api/grade":
                 self._grade(self._read_body())
+            elif self.path == "/api/alerts":
+                self._alerts(self._read_body())
             else:
                 self._json(404, {"error": "not found"})
         except (SchemaError, config_mod.ConfigError, FireBlocked) as exc:
@@ -231,8 +268,7 @@ class Handler(BaseHTTPRequestHandler):
         cfg = config_mod.load()
         fire = bool(body.get("fire"))
         case = catalog_mod.deal(scenario_id=body.get("scenario"), seed=body.get("seed"))
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        case_id = f"{stamp}-{case.scenario.id}"
+        case_id = new_case_id(case.scenario.id)
         SEAL_DIR.mkdir(parents=True, exist_ok=True)
         _case_path(case_id).write_text(json.dumps(catalog_mod.seal_dict(case.ground_truth), indent=2))
 
@@ -276,6 +312,32 @@ class Handler(BaseHTTPRequestHandler):
                        "expected": i.expected, "got": i.got, "note": i.note} for i in report.items],
             "stats": history_mod.stats().as_text(),
         })
+
+
+    def _siem_health(self):
+        cfg = config_mod.load()
+        try:
+            ok, detail = get_adapter(cfg.siem.adapter, cfg.siem.options).health()
+        except Exception as exc:  # noqa: BLE001
+            ok, detail = False, f"{type(exc).__name__}: {exc}"
+        self._json(200, {"adapter": cfg.siem.adapter, "ok": ok, "detail": detail})
+
+    def _alerts(self, body: dict):
+        cfg = config_mod.load()
+        window = _fire_window(body.get("case_id", ""))
+        if not window:
+            raise SchemaError("no fire window for this case (offline case, or not fired)")
+        start = datetime.strptime(window["start"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        end = datetime.strptime(window["end"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        try:
+            adapter = get_adapter(cfg.siem.adapter, cfg.siem.options)
+            alerts = adapter.query_alerts(start, end, limit=int(body.get("limit", 200)))
+        except Exception as exc:  # noqa: BLE001
+            self._json(502, {"error": f"{cfg.siem.adapter} query failed: {exc}"})
+            return
+        self._json(200, {"window": window, "count": len(alerts), "alerts": [
+            {"timestamp": a.timestamp, "rule": a.rule, "level": a.level,
+             "source": a.source, "description": a.description} for a in alerts]})
 
 
 def serve(host: str = "127.0.0.1", port: int = 8787) -> None:

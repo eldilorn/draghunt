@@ -130,3 +130,15 @@ class TestFireGates(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCaseId(unittest.TestCase):
+    def test_ids_are_unique_within_the_same_second(self):
+        from datetime import datetime, timezone
+        from dealer.web import new_case_id, _CASE_ID
+        now = datetime(2026, 9, 7, 17, 24, 52, tzinfo=timezone.utc)
+        a = new_case_id("DEMO-BRUTE", now)
+        b = new_case_id("DEMO-BRUTE", now)
+        self.assertNotEqual(a, b)          # no collision even at the same instant
+        self.assertTrue(_CASE_ID.match(a))
+        self.assertTrue(_CASE_ID.match(b))

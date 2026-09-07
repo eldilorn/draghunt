@@ -53,9 +53,10 @@ def _cmd_deal(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    from .web import new_case_id
+    case_id = new_case_id(case.scenario.id)
     SEAL_DIR.mkdir(parents=True, exist_ok=True)
-    seal_path = SEAL_DIR / f"{stamp}-{case.scenario.id}.json"
+    seal_path = SEAL_DIR / f"{case_id}.json"
     seal_path.write_text(json.dumps(catalog_mod.seal_dict(case.ground_truth), indent=2))
     os.chmod(seal_path, stat.S_IRUSR | stat.S_IWUSR)  # 0600
 
@@ -72,7 +73,7 @@ def _cmd_deal(args: argparse.Namespace) -> int:
         print(f"FIRING LIVE against {cfg.target.host} via {cfg.attacker.host} ...")
         result = fire_mod.execute(plan, confirm=True)
         win = result.window()
-        (SEAL_DIR / f"{stamp}-{case.scenario.id}.fire.json").write_text(json.dumps({
+        (SEAL_DIR / f"{case_id}.fire.json").write_text(json.dumps({
             "returncode": result.returncode, "started_utc": result.started_utc,
             "finished_utc": result.finished_utc, "window": win, "command": result.command,
             "error": result.error}, indent=2))
@@ -84,7 +85,7 @@ def _cmd_deal(args: argparse.Namespace) -> int:
                 print("  stderr:", result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "", file=sys.stderr)
     elif not args.no_telemetry:
         TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
-        tel_path = TELEMETRY_DIR / f"{stamp}-{case.scenario.id}.log"
+        tel_path = TELEMETRY_DIR / f"{case_id}.log"
         tel_path.write_text("\n".join(telemetry_mod.generate(case)) + "\n")
         print(f"Telemetry to investigate : {tel_path}")
 
@@ -176,6 +177,30 @@ def _cmd_init_config(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _cmd_alerts(args: argparse.Namespace) -> int:
+    from datetime import datetime, timezone
+    from .siem import get_adapter
+    cfg = config_mod.load()
+    fire_path = SEAL_DIR / f"{args.case}.fire.json"
+    if not fire_path.exists():
+        print(f"error: no fire record for case {args.case} (offline case, or not fired)",
+              file=sys.stderr)
+        return 2
+    window = json.loads(fire_path.read_text()).get("window", {})
+    start = datetime.strptime(window["start"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    end = datetime.strptime(window["end"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    try:
+        alerts = get_adapter(cfg.siem.adapter, cfg.siem.options).query_alerts(start, end, limit=args.limit)
+    except Exception as exc:  # noqa: BLE001
+        print(f"error: {cfg.siem.adapter} query failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"{len(alerts)} alerts in {window['start']} .. {window['end']}")
+    for a in alerts:
+        print(f"  {a.timestamp}  rule {a.rule} (lvl {a.level})  {a.source}  {a.description}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="dealer", description="The Dealer investigation-rep loop.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -211,6 +236,11 @@ def build_parser() -> argparse.ArgumentParser:
     ic.add_argument("--out", default="range.toml")
     ic.add_argument("--force", action="store_true")
     ic.set_defaults(func=_cmd_init_config)
+
+    al = sub.add_parser("alerts", help="pull SIEM alerts for a fired case's window")
+    al.add_argument("--case", required=True, help="case id (see .groundtruth/*.fire.json)")
+    al.add_argument("--limit", type=int, default=200)
+    al.set_defaults(func=_cmd_alerts)
 
     return p
 
