@@ -25,10 +25,20 @@
 
 <!-- ============================ PRACTICE ============================ -->
 <section id="view-practice" class="view">
+  <section id="welcome" class="panel welcome" hidden>
+    <h2>How Draghunt works</h2>
+    <ol class="steps">
+      <li><b>Run an exercise.</b> Draghunt stages an incident and hands you the evidence.</li>
+      <li><b>Investigate and write the report.</b> Read the events, cite the ones that matter, and record your findings.</li>
+      <li><b>Submit to see the answer key.</b> Your findings are scored, and the debrief shows what actually happened.</li>
+    </ol>
+    <p class="hint">Synthetic exercises use fictional events generated on this machine. Nothing touches your lab. When you're ready to run real attacks against your own range, add it under Settings.</p>
+  </section>
+
   <div class="panel run">
     <div class="run-head"><h2>New exercise</h2><span class="hint" id="rangeDetail"></span></div>
     <div class="run-controls">
-      <div class="field"><label for="scenario">Exercise</label><select id="scenario"><option value="">Blind draw</option></select></div>
+      <div class="field"><label for="scenario">Exercise</label><select id="scenario"><option value="">Blind draw</option></select><span class="hint" id="pickHint"></span></div>
       <button id="laybtn" class="primary">Run</button>
     </div>
     <label class="switch"><input id="firelive" type="checkbox"><span>Run against my real lab</span></label>
@@ -49,6 +59,11 @@
       <section id="caseCard" class="panel" hidden>
         <div class="case-head"><h2 id="caseTitle">Investigation</h2><span class="chip" id="caseStatus"></span></div>
         <p class="meta" id="caseMeta"></p>
+        <ol class="stepper" id="stepper" aria-label="Workflow">
+          <li data-step="evidence"><span class="n">1</span>Evidence</li>
+          <li data-step="report"><span class="n">2</span>Report</li>
+          <li data-step="debrief"><span class="n">3</span>Debrief</li>
+        </ol>
         <p id="brief"></p>
         <details id="diagnosticsBox" hidden><summary>Execution diagnostics</summary><pre id="diagnostics"></pre></details>
         <div id="liveTools" class="toolbar" hidden>
@@ -64,12 +79,20 @@
       </section>
 
       <section id="reportCard" class="panel" hidden>
-        <form id="reportForm"><fieldset id="reportFields"><legend>Incident report</legend><div class="report-grid">
-          <div class="field"><label for="v_disp">Disposition</label><select id="v_disp"><option value="inconclusive">Inconclusive</option><option value="malicious">Malicious</option><option value="benign">Benign</option></select></div>
-          <div class="field"><label for="v_tech">ATT&amp;CK technique</label><input id="v_tech" placeholder="T1110.001, or leave blank"></div>
-          <div class="field"><label for="v_src">Source IP</label><input id="v_src"></div>
-          <div class="field"><label for="v_acct">Account</label><input id="v_acct" placeholder="Leave blank if not established"></div>
-          <div class="field"><label for="v_succ">Did the objective succeed?</label><select id="v_succ"><option value="">Unknown / not applicable</option><option value="false">No</option><option value="true">Yes</option></select></div>
+        <form id="reportForm"><fieldset id="reportFields" class="bare"><legend class="sr">Incident report</legend>
+        <fieldset class="scored"><legend>Findings · scored</legend>
+          <p class="hint graded">Five findings make your score, normalized to 100. Calling a malicious case benign, or the reverse, caps the score at 40. The right parent technique earns partial credit. A blank field scores zero for that item, never negative.</p>
+          <div class="report-grid">
+          <div class="field"><label for="v_disp">Disposition <span class="w">30</span></label><select id="v_disp"><option value="inconclusive">Inconclusive</option><option value="malicious">Malicious</option><option value="benign">Benign</option></select></div>
+          <div class="field"><label for="v_tech">ATT&amp;CK technique <span class="w">25</span></label><input id="v_tech" placeholder="T1110.001, or leave blank"></div>
+          <div class="field"><label for="v_src">Source IP <span class="w">15</span></label><input id="v_src" placeholder="Where it came from"></div>
+          <div class="field"><label for="v_acct">Account <span class="w">15</span></label><input id="v_acct" placeholder="Leave blank if not established"></div>
+          <div class="field"><label for="v_succ">Did the objective succeed? <span class="w">15</span></label><select id="v_succ"><option value="">Unknown / not applicable</option><option value="false">No</option><option value="true">Yes</option></select></div>
+          </div>
+        </fieldset>
+        <fieldset><legend>Report · completeness</legend>
+          <p class="hint">Not scored for accuracy. The debrief checks that each part is present and that cited evidence IDs exist in this case.</p>
+          <div class="report-grid">
           <div class="field"><label for="v_confidence">Confidence</label><select id="v_confidence"><option value="">Not supplied</option><option>low</option><option>medium</option><option>high</option></select></div>
           <div class="field span2"><label for="v_narr">Summary and reasoning</label><textarea id="v_narr" rows="4"></textarea></div>
           <div class="field span2"><label for="v_timeline">Timeline</label><textarea id="v_timeline" rows="3" placeholder="Time, event, evidence ID"></textarea></div>
@@ -78,17 +101,19 @@
           <div class="field span2"><label for="v_actions">Recommended actions</label><textarea id="v_actions" rows="3"></textarea></div>
           <div class="field span2"><label for="v_evidence">Cited evidence IDs (one per line)</label><textarea id="v_evidence" rows="2"></textarea></div>
           <div class="field span2"><label for="v_review">Self-review</label><textarea id="v_review" rows="3" placeholder="Does the cited evidence support each claim? Did you separate facts from assumptions?"></textarea></div>
-        </div>
+          </div>
+        </fieldset>
         <div class="toolbar"><button id="gradebtn" type="submit" class="primary">Submit report</button><button id="savebtn" type="button" class="ghost">Save draft</button><span id="saveStatus" class="hint"></span></div></fieldset></form>
         <div class="toolbar"><button id="exportMd" class="ghost">Export Markdown</button><button id="exportJson" class="ghost">Export JSON</button><button id="replaybtn" class="ghost" hidden>Replay as practice</button></div>
       </section>
 
       <section id="resultCard" class="panel" hidden>
         <h3>Debrief</h3>
-        <p id="score" class="score"></p><p id="reportScore" class="meta"></p><p class="hint" id="reportNote"></p>
-        <div id="reportChecks" class="checks"></div>
+        <div id="answerKey" class="answer"></div>
+        <p id="score" class="score"></p><p id="reportScore" class="meta"></p>
         <table id="gradeItems"></table>
-        <details><summary>Verified outcome and execution details</summary><pre id="debrief"></pre></details>
+        <details class="sub"><summary>Report completeness checks</summary><p class="hint" id="reportNote"></p><div id="reportChecks" class="checks"></div></details>
+        <details class="sub"><summary>Raw outcome and execution details</summary><pre id="debrief"></pre></details>
       </section>
 
       <section id="detectionCard" class="panel" hidden>

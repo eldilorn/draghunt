@@ -72,6 +72,7 @@ async function loadCases() {
     return button;
   }));
   if(!cases.length) $('caseList').append(node('p','No exercises yet. Run one above.','hint'));
+  $('welcome').hidden = cases.length > 0;   // first-run orientation until the first exercise exists
   return cases;
 }
 function table(headers, rows) {
@@ -106,9 +107,29 @@ function renderEvents() {
   $('events').replaceChildren(node('p',`${events.length} matching events${events.length>250?' · showing 250; narrow your search':''}`,'hint'),...elements);
 }
 $('eventFilter').addEventListener('input',renderEvents);
+function renderAnswerKey(debrief) {
+  const t=debrief.truth, sc=debrief.scenario;
+  const disposition={malicious:'Malicious activity',benign:'Benign activity'}[t.disposition] || 'Inconclusive';
+  const technique=t.technique ? `Technique ${t.technique} (${t.tactic}).` : `No ATT&CK technique applies (${t.tactic}).`;
+  const who=[t.source_ip ? `Source ${t.source_ip}` : null, t.account ? `account ${t.account}` : null].filter(Boolean).join(', ');
+  const outcome=t.succeeded===true ? 'The objective succeeded.' : t.succeeded===false ? 'The objective did not succeed.' : 'Whether the objective succeeded was not observable.';
+  $('answerKey').replaceChildren(node('p',`This was: ${sc.title}`,'answer-title'),
+    node('p',`${disposition}. ${technique} ${who ? who+'. ' : ''}${outcome}`),
+    node('p',sc.brief,'hint'));
+}
+function renderStepper(doc) {
+  const order=['evidence','report','debrief'];
+  const step=doc.submission ? 'debrief' : doc.draft_version > 0 ? 'report' : 'evidence';
+  for(const li of $('stepper').children) {
+    li.setAttribute('aria-current',String(li.dataset.step===step));
+    li.classList.toggle('done',order.indexOf(li.dataset.step) < order.indexOf(step));
+  }
+}
 function renderCase(doc, fill=true) {
   current=doc;
-  $('caseCard').hidden=false; $('caseTitle').textContent=doc.title; $('caseMeta').textContent=`${doc.id} · ${doc.mode} · ${doc.target}`;
+  $('caseCard').hidden=false; $('caseTitle').textContent=doc.title;
+  $('caseMeta').textContent=doc.mode==='live' ? `${doc.id} · live · target ${doc.target}` : `${doc.id} · synthetic · fictional events, nothing touched your lab`;
+  renderStepper(doc);
   $('caseStatus').textContent=doc.error || doc.state.replaceAll('_',' '); $('caseStatus').classList.toggle('danger',Boolean(doc.error)); $('brief').textContent=doc.brief;
   $('diagnosticsBox').hidden=!doc.diagnostics; $('diagnostics').textContent=doc.diagnostics ? JSON.stringify(doc.diagnostics,null,2) : '';
   $('liveTools').hidden=doc.mode!=='live' || !doc.window;
@@ -125,6 +146,7 @@ function renderCase(doc, fill=true) {
     const finding=doc.submission.finding_score, report=doc.submission.report_score;
     $('score').textContent=`Finding accuracy: ${finding.total}/100 · ${finding.band}`;
     $('reportScore').textContent=`Report completeness: ${report.total}/100`; $('reportNote').textContent=report.note;
+    renderAnswerKey(doc.debrief);
     $('reportChecks').replaceChildren(...Object.entries(report.checks).map(([key,ok])=>node('p',`${ok?'✓':'Missing:'} ${key.replaceAll('_',' ')}`)));
     $('gradeItems').replaceChildren(...table(['Finding','Points','Expected','Reported'],finding.items.map(i=>[i.dimension,i.weight?`${i.earned}/${i.weight}`:'Not scored',i.weight?i.expected:'Not observable / applicable',i.got])).children);
     $('debrief').textContent=JSON.stringify(doc.debrief,null,2);
@@ -171,7 +193,14 @@ function updateRunControls() {
   const selected=$('scenario').value;
   const options=[node('option','Blind draw'),...settings.deck.filter(d=>live ? d.live : d.offline).map(d=>{ const opt=node('option',d.title); opt.value=d.id; return opt; })];
   options[0].value=''; $('scenario').replaceChildren(...options); if(options.some(o=>o.value===selected)) $('scenario').value=selected;
+  pickHint();
 }
+function pickHint() {
+  $('pickHint').textContent=$('scenario').value
+    ? 'A named drill tells you the category up front. The specifics are still randomized.'
+    : "You won't be told which incident this is. Work it out from the evidence.";
+}
+$('scenario').addEventListener('change',pickHint);
 $('firelive').addEventListener('change',updateRunControls);
 action('laybtn',async()=>{
   await saveDraft(); const live=$('firelive').checked, reset=$('resetfirst').checked;
@@ -179,6 +208,7 @@ action('laybtn',async()=>{
   const body={scenario:$('scenario').value || null,fire:live,reset,confirm:live};
   if($('seed').value!=='') { const seed=Number($('seed').value); if(!Number.isSafeInteger(seed) || seed<0) throw new Error('Use a nonnegative whole-number seed.'); body.seed=seed; }
   const doc=await api('/api/lay',body); renderCase(doc); localStorage.setItem('activeCase',doc.id); await loadCases(); message(live?'Exercise queued. Progress is saved as it runs.':'Exercise ready. Investigate the events and write your report.');
+  $('caseCard').scrollIntoView({behavior:'smooth',block:'start'});
 });
 action('refreshCases',loadCases);
 action('savebtn',saveDraft);
@@ -247,6 +277,7 @@ $('cfgForm').addEventListener('submit',async event=>{
 function setRangePill() {
   const liveAvailable=settings.fire_ready && settings.deck.some(d=>d.live);
   const pill=$('rangeStatus'); pill.textContent=liveAvailable?'Live range':'Synthetic mode'; pill.classList.toggle('live',liveAvailable);
+  pill.title=liveAvailable ? `Live range: exercises can run against ${settings.target}.` : 'Synthetic mode: fictional events generated on this machine. Nothing touches your lab.';
   $('rangeDetail').textContent=liveAvailable?`Target: ${settings.target}.`:'Synthetic exercises are ready. Add your lab in Settings to run live.';
 }
 async function boot() {
