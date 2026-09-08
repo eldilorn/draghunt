@@ -17,6 +17,10 @@ from .store import BusyError, CASE_ID as _CASE_ID, new_case_id, private_write
 from .workflow import Workflow
 
 STATIC = Path(__file__).parent / "static"
+# Exact-literal routes only; nothing user-controlled ever maps to a filesystem path.
+STATIC_FILES = {"/app.js": "text/javascript; charset=utf-8", "/app.css": "text/css; charset=utf-8",
+                "/logo.png": "image/png", "/mark.png": "image/png", "/mark-light.png": "image/png",
+                "/favicon.png": "image/png"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -113,9 +117,8 @@ class Handler(BaseHTTPRequestHandler):
             if route.path == "/":
                 page = (STATIC / "index.html").read_text().replace("__SESSION_TOKEN__", self.server.session_token)
                 self._send(200, page.encode(), "text/html; charset=utf-8")
-            elif route.path in ("/app.js", "/app.css"):
-                ctype = "text/javascript" if route.path.endswith(".js") else "text/css"
-                self._send(200, (STATIC / route.path[1:]).read_bytes(), ctype + "; charset=utf-8")
+            elif route.path in STATIC_FILES:
+                self._send(200, (STATIC / route.path[1:]).read_bytes(), STATIC_FILES[route.path])
             elif route.path == "/api/state":
                 cfg = self.workflow.cfg
                 self._json(200, {"deck": [{"id": s.id, "title": s.title, "live": s.live, "offline": telemetry.supports(s)} for s in self.workflow.deck().values()],

@@ -1,3 +1,5 @@
+<img src="draghunt/static/logo.png" alt="Draghunt" width="320">
+
 # Draghunt
 
 Practice alert triage, incident reporting, and detection engineering in your own lab.

@@ -1,8 +1,11 @@
+/* Palette taken from the Draghunt logo: hound green #183328, scent-trail orange #c15724.
+   Surfaces are the green pushed near-black; the orange is the single accent. */
 :root{
- --bg:#0e1116; --panel:#151a21; --panel2:#1a212b; --edge:#252d38; --edge2:#323c49;
- --ink:#e2e8ef; --dim:#98a3b0; --faint:#6a7683;
- --accent:#e2a24a; --accent-ink:#20160a; --accent-dim:#8a6a34;
- --live:#57b37e; --bad:#d96a6a; --info:#5f9fe0;
+ --brand:#183328;
+ --bg:#0c1511; --panel:#122019; --panel2:#17281f; --edge:#1f3328; --edge2:#2b4436;
+ --ink:#e6efe9; --dim:#9fb3a7; --faint:#6d8276;
+ --accent:#c15724; --accent-ink:#fff7f2; --accent-dim:#8a3f1a; --accent-bright:#d9662f;
+ --live:#5fb383; --bad:#d96a6a; --info:#5f9fe0;
  --radius:10px;
  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
@@ -18,8 +21,8 @@ code{font-family:var(--mono);font-size:.92em;color:var(--dim)}
 /* header + tabs */
 header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--edge)}
 .bar{max-width:1180px;margin:0 auto;padding:0 20px;height:52px;display:flex;align-items:center;gap:20px}
-.brand{display:flex;align-items:center;gap:9px}
-.brand .mark{width:12px;height:12px;border-radius:2px;background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .mark{height:30px;width:auto;display:block}
 .brand h1{font-size:15px;letter-spacing:.14em;font-weight:700}
 .tabs{display:flex;gap:2px;margin-left:6px}
 .tab{background:none;border:0;color:var(--dim);padding:6px 12px;border-radius:7px;font:inherit;font-size:13px;cursor:pointer}
@@ -59,7 +62,7 @@ button{background:var(--panel2);color:var(--ink);border:1px solid var(--edge2);b
 button:hover{border-color:var(--accent-dim);background:var(--panel)}
 button:disabled{opacity:.45;cursor:not-allowed}
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-button.primary:hover{filter:brightness(1.07)}
+button.primary:hover{background:var(--accent-bright);border-color:var(--accent-bright)}
 button.ghost{background:none}
 button.sm{padding:5px 10px;font-size:12px;font-weight:500}
 a.link{display:inline-block;text-decoration:none;padding:9px 16px;border:1px solid var(--edge2);border-radius:7px}

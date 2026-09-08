@@ -85,6 +85,10 @@ class WebTest(unittest.TestCase):
     def test_assets_and_path_protection(self):
         self.assertEqual(self.request('/app.js')[0],200)
         self.assertEqual(self.request('/app.css')[0],200)
+        for asset in ('/favicon.png', '/mark-light.png', '/logo.png'):
+            with urllib.request.urlopen(self.url + asset) as r:
+                self.assertEqual((r.status, r.headers['Content-Type']), (200, 'image/png'), asset)
+                self.assertTrue(r.read().startswith(b'\x89PNG'), asset)
         self.assertEqual(self.request('/api/case?id=../../etc/passwd')[0],400)
         self.assertEqual(self.request('/../../etc/passwd')[0],404)
         js = (Path(__file__).parents[1]/'draghunt/static/app.js').read_text()
