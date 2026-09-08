@@ -16,11 +16,7 @@ from . import Alert, AlertBatch, SiemAdapter, register
 @register("wazuh")
 class WazuhAdapter(SiemAdapter):
     def _ctx(self):
-        if self.options.get("verify_tls", True) is False:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            return ctx
+        # Always verified. Config rejects verify_tls = false; self-signed labs set ca_file.
         return ssl.create_default_context(cafile=self.options.get("ca_file"))
 
     def _request(self, path: str, body: dict | None, method: str = "POST") -> dict:
@@ -34,12 +30,14 @@ class WazuhAdapter(SiemAdapter):
             return json.loads(resp.read().decode())
 
     @staticmethod
-    def _query(start: datetime, end: datetime, size: int, agent_id: str = "") -> dict:
+    def _query(start: datetime, end: datetime, size: int, agent_id: str) -> dict:
+        if not agent_id:
+            raise ValueError("agent_id is required; every query is scoped to one agent")
         if start.utcoffset() is None or end.utcoffset() is None or end < start:
             raise ValueError("query requires an ordered, timezone-aware time window")
         window = {"range": {"timestamp": {"gte": start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                                            "lte": end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}}}
-        query = {"bool": {"filter": [window, {"term": {"agent.id": agent_id}}]}} if agent_id else window
+        query = {"bool": {"filter": [window, {"term": {"agent.id": agent_id}}]}}
         return {"size": size, "track_total_hits": True, "sort": [{"timestamp": {"order": "asc"}}], "query": query}
 
     @staticmethod
@@ -51,12 +49,12 @@ class WazuhAdapter(SiemAdapter):
         return Alert(raw.get("timestamp", ""), str(rule.get("id", "")), rule.get("level", ""),
                      agent.get("name", agent.get("ip", "")), rule.get("description", "Raw event"), raw, event_id)
 
-    def query_alerts(self, start: datetime, end: datetime, limit: int = 200) -> list[Alert]:
+    def query_alerts(self, start: datetime, end: datetime, agent_id: str, limit: int = 200) -> list[Alert]:
         """Compatibility API. The case workflow uses collect() and its completeness metadata."""
         if type(limit) is not int or not 1 <= limit <= 10000:
             raise ValueError("limit must be between 1 and 10000")
         index = quote(str(self.options.get("index", "wazuh-alerts-*")), safe="*,-_")
-        data = self._request(f"/{index}/_search", self._query(start, end, limit))
+        data = self._request(f"/{index}/_search", self._query(start, end, limit, agent_id))
         return [self._alert(hit) for hit in data.get("hits", {}).get("hits", [])]
 
     def collect(self, start: datetime, end: datetime, agent_id: str, limit: int = 2000,

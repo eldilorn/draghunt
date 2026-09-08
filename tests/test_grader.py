@@ -76,3 +76,12 @@ class TestGrader(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestIpNormalization(unittest.TestCase):
+    def test_source_ip_compares_in_canonical_form(self):
+        from draghunt.grader import _norm_ip
+        self.assertEqual(_norm_ip("2001:DB8::1"), _norm_ip("2001:db8:0:0:0:0:0:1"))
+        self.assertEqual(_norm_ip(" 10.0.0.5 "), "10.0.0.5")
+        self.assertEqual(_norm_ip("not-an-ip"), "not-an-ip")  # falls back rather than crashing
+        self.assertIsNone(_norm_ip(None))

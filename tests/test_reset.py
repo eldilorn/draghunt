@@ -5,7 +5,7 @@ from draghunt.config import RangeConfig
 from draghunt.reset import ProxmoxReset, reset_target, ResetBlocked
 
 
-PX = {"api_url": "https://pve:8006", "node": "pve", "vmid": 101,
+PX = {"api_url": "https://pve:8006", "node": "pve", "vmid": 101, "target_host": "10.0.0.6",
       "snapshot": "clean", "token_id": "root@pam!draghunt", "token_secret": "s"}
 
 
@@ -82,6 +82,15 @@ class TestOrchestrator(unittest.TestCase):
         res = reset_target(c, confirm=True)
         self.assertFalse(res.ok)
         self.assertIn("not configured", res.steps[0].detail)
+
+    def test_rollback_refuses_vm_not_bound_to_target(self):
+        # A stale vmid after re-pointing target.host must never roll back the wrong VM.
+        c = self._cfg("snapshot")
+        c.target.host = "10.0.0.99"
+        factory = lambda px: self.fail("rollback must not be attempted")
+        res = reset_target(c, confirm=True, proxmox_factory=factory)
+        self.assertFalse(res.ok)
+        self.assertIn("target_host", res.steps[0].detail)
 
 
 if __name__ == "__main__":

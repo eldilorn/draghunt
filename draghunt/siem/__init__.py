@@ -46,8 +46,8 @@ class SiemAdapter(ABC):
         self.options = options
 
     @abstractmethod
-    def query_alerts(self, start: datetime, end: datetime, limit: int = 200) -> list[Alert]:
-        """Return alerts between start and end (UTC). Implemented per SIEM."""
+    def query_alerts(self, start: datetime, end: datetime, agent_id: str, limit: int = 200) -> list[Alert]:
+        """Return alerts for one agent between start and end (UTC). Never unscoped."""
 
     def collect(self, start: datetime, end: datetime, agent_id: str, limit: int = 2000,
                 kind: str = "alerts") -> AlertBatch:

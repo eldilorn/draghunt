@@ -19,6 +19,8 @@ Design choices worth knowing:
 
 from __future__ import annotations
 
+import ipaddress
+
 from dataclasses import dataclass, asdict
 
 from .schema import GroundTruth, Verdict
@@ -97,7 +99,12 @@ def _band(total: float) -> str:
 
 
 def _norm_ip(s: str | None) -> str | None:
-    return s.strip() if s else None
+    if not s:
+        return None
+    try:
+        return str(ipaddress.ip_address(s.strip()))  # canonical form, so 2001:DB8::1 == 2001:db8::1
+    except ValueError:
+        return s.strip()
 
 
 def _norm_acct(s: str | None) -> str | None:

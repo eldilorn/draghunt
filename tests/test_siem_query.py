@@ -38,16 +38,18 @@ class TestWazuhQuery(unittest.TestCase):
         a, cap = self._adapter()
         start = datetime(2026, 9, 7, 16, 0, 0, tzinfo=timezone.utc)
         end = datetime(2026, 9, 7, 16, 5, 0, tzinfo=timezone.utc)
-        a.query_alerts(start, end, limit=50)
+        a.query_alerts(start, end, "001", limit=50)
         self.assertIn("wazuh-alerts-*", cap["path"])
-        rng = cap["body"]["query"]["range"]["timestamp"]
+        filters = cap["body"]["query"]["bool"]["filter"]
+        self.assertIn({"term": {"agent.id": "001"}}, filters)
+        rng = filters[0]["range"]["timestamp"]
         self.assertEqual(rng["gte"], "2026-09-07T16:00:00Z")
         self.assertEqual(rng["lte"], "2026-09-07T16:05:00Z")
         self.assertEqual(cap["body"]["size"], 50)
 
     def test_normalizes_hits_to_alerts(self):
         a, _ = self._adapter()
-        alerts = a.query_alerts(datetime.now(timezone.utc), datetime.now(timezone.utc))
+        alerts = a.query_alerts(datetime.now(timezone.utc), datetime.now(timezone.utc), "001")
         self.assertEqual(len(alerts), 2)
         self.assertIsInstance(alerts[0], Alert)
         self.assertEqual(alerts[0].rule, "5710")
@@ -59,7 +61,13 @@ class TestWazuhQuery(unittest.TestCase):
     def test_missing_indexer_url_raises(self):
         a = get_adapter("wazuh", {})
         with self.assertRaises(RuntimeError):
-            a.query_alerts(datetime.now(timezone.utc), datetime.now(timezone.utc))
+            a.query_alerts(datetime.now(timezone.utc), datetime.now(timezone.utc), "001")
+
+    def test_query_cannot_be_unscoped(self):
+        a, cap = self._adapter()
+        with self.assertRaisesRegex(ValueError, "agent_id is required"):
+            a.query_alerts(datetime.now(timezone.utc), datetime.now(timezone.utc), "")
+        self.assertNotIn("body", cap)  # rejected before any request was built
 
 
 if __name__ == "__main__":

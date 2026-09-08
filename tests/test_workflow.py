@@ -263,7 +263,11 @@ class ValidationTest(unittest.TestCase):
             cfg = RangeConfig.from_dict({'siem':{'wazuh':{}},'reset':{'proxmox':{}}})
         self.assertEqual(cfg.siem.options['password'],'secret')
         self.assertEqual(cfg.reset.proxmox['token_secret'],'px')
-        for doc in ({'reset':{'mode':'snapshott'}},{'siem':{'wazuh':{'verify_tls':'false'}}},{'attacker':{'host':'host; command'}},{'runner':{'entry':'../run.sh'}}):
+        for doc in ({'reset':{'mode':'snapshott'}},{'siem':{'wazuh':{'verify_tls':'false'}}},{'attacker':{'host':'host; command'}},{'runner':{'entry':'../run.sh'}},
+                    {'siem':{'wazuh':{'verify_tls':False}}},                       # TLS verification cannot be disabled
+                    {'siem':{'wazuh':{'indexer_url':'http://indexer:9200'}}},     # credentialed endpoints must be HTTPS
+                    {'reset':{'proxmox':{'api_url':'http://pve:8006'}}},
+                    {'target':{'host':'10.0.0.6'},'reset':{'mode':'snapshot','proxmox':{'vmid':101,'target_host':'10.0.0.7'}}}):  # rollback unbound from target
             with self.assertRaises(ConfigError):
                 RangeConfig.from_dict(doc)
 

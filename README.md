@@ -82,7 +82,10 @@ IDs. Public demo scenarios cannot be fired live.
 The dispatcher must implement [runner protocol v1](docs/RUNNER-PROTOCOL.md): a read-only
 preflight plus a structured, case-linked result with actual source/account/outcome,
 action timestamps, and verification references. An exit code of zero is insufficient.
-An intended success parameter is never treated as the observed outcome.
+An intended success parameter is never treated as the observed outcome. Live runs always
+originate from the configured attacker host, since one box cannot spoof its source; the
+catalog's `source_pool` randomizes synthetic exercises only, and the graded source IP is
+the one the runner observed.
 
 Set the target's Wazuh `agent_id`, indexer URL, and read credential. Alert collection is
 restricted to that agent and the saved execution window; complete raw documents are
@@ -90,7 +93,14 @@ retained with stable evidence IDs. Collection paginates and reports truncation o
 partial indexer results. **Raw Wazuh events** additionally requires archive indexing and
 `siem.wazuh.events_index`. Missing alerts alone do not prove missing activity.
 
-Optional reset modes are `snapshot`, `cleanup`, `both`, and `none`. Snapshot resets wait
+The indexer and Proxmox API URLs must be HTTPS and are always certificate-verified; for a
+self-signed lab CA set `ca_file` rather than disabling verification. Prefer the
+`DRAGHUNT_SIEM_PASSWORD` and `DRAGHUNT_PROXMOX_SECRET` environment variables for secrets.
+A profile that holds a secret inline is refused unless it is mode 0600.
+
+Optional reset modes are `snapshot`, `cleanup`, `both`, and `none`. Set
+`reset.proxmox.target_host` to the same address as `target.host`; a rollback refuses to
+run unless they match, so a stale `vmid` can never revert the wrong VM. Snapshot resets wait
 for Proxmox rollback/start tasks. Failed resets stop the run. The runner must confirm
 target services and telemetry readiness before execution. One controller data directory
 serializes operations against each configured target. Use the same data directory for

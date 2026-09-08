@@ -14,7 +14,7 @@ code is bundled with this product.
 2. Implement [runner protocol v1](RUNNER-PROTOCOL.md). Mark compatible metadata `live: true`.
    Old unstructured `fire.sh` output is intentionally not accepted as ground truth.
 3. Use a read credential permitting the configured index search and scroll/clear operations.
-   Configure a trusted CA or explicitly choose `verify_tls = false` for an appropriate lab.
+   TLS is always verified; for a self-signed lab CA, point `ca_file` at the CA certificate.
 4. Validate the profile against one disposable target. Run only after explicitly choosing
    the named target and any reset action. Preflight must be read-only.
 5. Collect alerts and, where configured, raw events. Collections preserve full documents,

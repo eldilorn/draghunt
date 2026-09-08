@@ -69,6 +69,8 @@ def ssh_command(cfg: RangeConfig, params: dict[str, str]) -> list[str]:
 
 def build_plan(case: Hunt, cfg: RangeConfig, live: bool = False, case_id: str = "") -> FirePlan:
     gt = case.ground_truth
+    # SRC_IP is the real attacker host: a single box cannot spoof its source. The catalog's
+    # source_pool only randomizes synthetic exercises; live grading uses the observed source.
     params = {
         "DRAGHUNT_PROTOCOL": str(PROTOCOL_VERSION), "CASE_ID": case_id,
         "ACTION": "run", "SCN": case.scenario.id, "SRC_IP": cfg.attacker.host,

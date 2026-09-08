@@ -43,6 +43,16 @@ class TestConfig(unittest.TestCase):
             with self.assertRaises(ConfigError):
                 load(p)
 
+    def test_readable_profile_with_inline_secret_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "range.toml"
+            p.write_text(EXAMPLE_TOML.replace('username = "draghunt-reader"', 'username = "r"\npassword = "hunter2"'))
+            p.chmod(0o644)
+            with self.assertRaisesRegex(ConfigError, "readable by other users"):
+                load(p)
+            p.chmod(0o600)
+            self.assertEqual(load(p).siem.options["password"], "hunter2")
+
 
 class TestSiemSeam(unittest.TestCase):
     def test_wazuh_registered(self):

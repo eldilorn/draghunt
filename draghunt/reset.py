@@ -68,11 +68,7 @@ class ProxmoxReset:
         self.poll_max = poll_max
 
     def _ctx(self):
-        if str(self.px.get("verify_tls", "true")).lower() in ("false", "0", "no"):
-            c = ssl.create_default_context()
-            c.check_hostname = False
-            c.verify_mode = ssl.CERT_NONE
-            return c
+        # Always verified. Config rejects verify_tls = false; self-signed labs set ca_file.
         return ssl.create_default_context(cafile=self.px.get("ca_file"))
 
     def _req(self, method: str, path: str) -> dict:
@@ -108,7 +104,8 @@ class ProxmoxReset:
                 state = self._req("GET", f"{base}/status/current").get("data", {})
                 if state.get("status") != "running":
                     raise ValueError("VM is not running after startup")
-            return ResetStep("proxmox-rollback", True, f"VM {vmid} on {node} reverted to snapshot '{snap}'")
+            return ResetStep("proxmox-rollback", True,
+                             f"VM {vmid} on {node} (target {self.px.get('target_host', '?')}) reverted to snapshot '{snap}'")
         except (urllib.error.URLError, OSError, KeyError, ValueError) as exc:
             if isinstance(exc, urllib.error.HTTPError):
                 exc.close()
@@ -156,13 +153,12 @@ def reset_target(cfg: RangeConfig, scenario_id: str = "", confirm: bool = False,
         raise ResetBlocked("reset requires explicit confirmation")
     result = ResetResult()
     if mode in ("snapshot", "both"):
-        if not confirm:
-            raise ResetBlocked(
-                "snapshot rollback is destructive; pass confirm=True to proceed")
         miss = _px_missing(cfg.reset.proxmox)
         if miss:
             result.steps.append(ResetStep("proxmox-rollback", False,
                                           "not configured: " + ", ".join(miss)))
+        elif err := cfg.rollback_binding_error():
+            result.steps.append(ResetStep("proxmox-rollback", False, err))
         else:
             result.steps.append(proxmox_factory(cfg.reset.proxmox).rollback())
     if not result.ok:
