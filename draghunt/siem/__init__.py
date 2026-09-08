@@ -28,6 +28,15 @@ class Alert:
     source: str          # agent / host the alert came from
     description: str
     raw: dict[str, Any]
+    event_id: str = ""
+
+
+@dataclass
+class AlertBatch:
+    alerts: list[Alert]
+    total: int
+    complete: bool
+    detail: str = ""
 
 
 class SiemAdapter(ABC):
@@ -39,6 +48,10 @@ class SiemAdapter(ABC):
     @abstractmethod
     def query_alerts(self, start: datetime, end: datetime, limit: int = 200) -> list[Alert]:
         """Return alerts between start and end (UTC). Implemented per SIEM."""
+
+    def collect(self, start: datetime, end: datetime, agent_id: str, limit: int = 2000,
+                kind: str = "alerts") -> AlertBatch:
+        raise NotImplementedError("this adapter does not support scoped evidence collection")
 
     def health(self) -> tuple[bool, str]:
         """Cheap reachability check. Override; default says 'unknown'."""

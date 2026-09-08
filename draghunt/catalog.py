@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import json
 import random
+import re
+import ipaddress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .schema import GroundTruth, SchemaError
+from .schema import GroundTruth, SchemaError, technique
 
 CATALOG_DIR = Path(__file__).parent / "data" / "catalog"
 
@@ -28,7 +30,7 @@ CATALOG_DIR = Path(__file__).parent / "data" / "catalog"
 class Scenario:
     id: str
     title: str
-    technique: str
+    technique: str | None
     tactic: str
     difficulty: str
     disposition: str
@@ -37,14 +39,34 @@ class Scenario:
     succeed_prob: float
     telemetry: dict[str, Any]
     brief: str
+    live: bool = False
 
     @staticmethod
     def from_dict(doc: dict[str, Any]) -> "Scenario":
         try:
+            if not isinstance(doc, dict):
+                raise ValueError("expected an object")
+            if not isinstance(doc.get("id"), str) or not re.fullmatch(r"[A-Z0-9][A-Z0-9-]*", doc["id"]):
+                raise ValueError("id must contain uppercase letters, numbers, and hyphens")
+            for key in ("accounts", "source_pool"):
+                values = doc.get(key, [])
+                if not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values):
+                    raise ValueError(f"{key} must contain strings")
+            for value in doc.get("source_pool", []):
+                ipaddress.ip_address(value)
+            if not doc.get("source_pool"):
+                raise ValueError("source_pool must not be empty")
+            if type(doc.get("live", False)) is not bool:
+                raise ValueError("live must be a boolean")
+            if doc.get("disposition", "malicious") not in ("malicious", "benign", "inconclusive"):
+                raise ValueError("invalid disposition")
+            probability = doc.get("succeed_prob", 0.5)
+            if type(probability) not in (float, int) or not 0 <= probability <= 1:
+                raise ValueError("succeed_prob must be between 0 and 1")
             return Scenario(
                 id=str(doc["id"]),
                 title=str(doc["title"]),
-                technique=str(doc["technique"]).upper(),
+                technique=technique(doc.get("technique")),
                 tactic=str(doc["tactic"]).lower(),
                 difficulty=str(doc.get("difficulty", "unknown")),
                 disposition=str(doc.get("disposition", "malicious")).lower(),
@@ -52,17 +74,23 @@ class Scenario:
                 source_pool=list(doc["source_pool"]),
                 succeed_prob=float(doc.get("succeed_prob", 0.5)),
                 telemetry=dict(doc.get("telemetry") or {}),
-                brief=str(doc.get("brief", "A drag has been laid. Investigate.")),
+                brief=str(doc.get("brief", "Investigate the available events.")),
+                live=doc.get("live", False),
             )
         except (KeyError, ValueError, TypeError) as exc:
-            raise SchemaError(f"bad scenario '{doc.get('id', '?')}': {exc}") from exc
+            raise SchemaError(f"bad scenario: {exc}") from exc
 
 
 def load_catalog(catalog_dir: Path | None = None) -> dict[str, Scenario]:
     d = catalog_dir or CATALOG_DIR
     deck: dict[str, Scenario] = {}
     for path in sorted(d.glob("*.json")):
-        s = Scenario.from_dict(json.loads(path.read_text()))
+        try:
+            s = Scenario.from_dict(json.loads(path.read_text()))
+        except (OSError, ValueError) as exc:
+            raise SchemaError(f"{path}: {exc}") from exc
+        if s.id in deck:
+            raise SchemaError(f"duplicate scenario ID: {s.id}")
         deck[s.id] = s
     if not deck:
         raise SchemaError(f"no scenarios found in {d}")
@@ -86,7 +114,7 @@ class Hunt:
     def blind_brief(self) -> str:
         s = self.scenario
         return (
-            f"Drag laid — {s.id}\n"
+            f"Investigation started\n"
             f"  difficulty : {s.difficulty}\n"
             f"  laid (UTC): {self.ground_truth.laid_utc}\n"
             f"  telemetry  : {s.telemetry.get('log_source', 'unknown')}\n\n"
@@ -98,8 +126,13 @@ def lay(
     scenario_id: str | None = None,
     seed: int | None = None,
     catalog_dir: Path | None = None,
+    *, deck: dict[str, Scenario] | None = None,
 ) -> Hunt:
-    deck = load_catalog(catalog_dir)
+    deck = deck if deck is not None else load_catalog(catalog_dir)
+    if scenario_id is not None and not isinstance(scenario_id, str):
+        raise SchemaError("scenario must be an ID")
+    if seed is not None and (type(seed) is not int or not 0 <= seed < 2**63):
+        raise SchemaError("seed must be an integer between 0 and 2**63-1")
 
     if seed is None:
         seed = random.SystemRandom().randint(0, 2**31 - 1)
@@ -117,6 +150,8 @@ def lay(
     source_ip = rng.choice(scenario.source_pool)
     succeeded = rng.random() < scenario.succeed_prob
     variant = rng.randint(1, 3)
+    if scenario.telemetry.get("outcome_observable") is False or scenario.disposition == "benign":
+        succeeded = None
 
     gt = GroundTruth(
         scenario_id=scenario.id,
@@ -127,7 +162,7 @@ def lay(
         succeeded=succeeded,
         disposition=scenario.disposition,
         laid_utc=_now_utc(),
-        notes=f"synthetic demo case; seed={seed}; variant={variant}",
+        notes=f"seed={seed}; variant={variant}",
     )
     return Hunt(ground_truth=gt, scenario=scenario, seed=seed, variant=variant)
 

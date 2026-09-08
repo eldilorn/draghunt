@@ -1,98 +1,47 @@
-# Live mode — control-center architecture (planning)
+# Live operation
 
-Status: **phases 1-5 built.** Full live loop (reset, fire, SIEM pull, grade,
-track), plus a native desktop app. Live fire and reset are gated (config + confirm).
+The controller, SSH transport, reset handling, Wazuh collection, reports, and scoring are
+implemented. Real use still requires compatible private scenario metadata/runner code
+and validation against the user's lab. The automated suite uses fakes, not a real range.
 
-## The planes
+The laptop runs the controller; an SSH dispatcher on the attacker executes the user's
+private scenarios against the configured target. A Wazuh agent supplies evidence. Optional
+Proxmox rollback and runner cleanup establish a clean starting point. No private attack
+code is bundled with this product.
 
-The laptop never attacks anything directly. It tells Kali what to fire.
+1. Generate a profile with `draghunt init-config`. Set attacker/target addresses, SSH key,
+   Wazuh agent ID/indexer credentials, private catalog path, and reset details.
+2. Implement [runner protocol v1](RUNNER-PROTOCOL.md). Mark compatible metadata `live: true`.
+   Old unstructured `fire.sh` output is intentionally not accepted as ground truth.
+3. Use a read credential permitting the configured index search and scroll/clear operations.
+   Configure a trusted CA or explicitly choose `verify_tls = false` for an appropriate lab.
+4. Validate the profile against one disposable target. Run only after explicitly choosing
+   the named target and any reset action. Preflight must be read-only.
+5. Collect alerts and, where configured, raw events. Collections preserve full documents,
+   use `agent.id`, paginate, and indicate incomplete results. The controller stores the
+   investigation window and waits before interpreting absent detections.
 
-```
-   LAPTOP (control)          KALI (attacker)        TARGET VM(s)      WAZUH
-   - Draghunt web app  --SSH-> - runners            - victims          - SIEM
-   - click "lay"            - fires attack  --->  (agent ships  ---> - you
-   - seals the truth                               telemetry)          investigate
-   - grades verdict  <----------------------------  <-- alerts via indexer API
-   - tracks reps
-```
+Wazuh alert indices contain rule-generated alerts; archive indices can contain events
+that never caused alerts. Archive indexing must be enabled independently in the lab.
+[Wazuh index documentation](https://documentation.wazuh.com/current/user-manual/wazuh-indexer/wazuh-indexer-indices.html).
+Pagination uses a bounded scroll context and closes it after retrieval.
+[OpenSearch scroll API](https://docs.opensearch.org/latest/api-reference/search-apis/scroll/).
 
-- **Control plane (laptop):** picks + randomizes the scenario, seals the truth
-  locally, drives Kali over SSH, pulls alerts from Wazuh, grades, tracks reps.
-- **Execution plane (Kali):** receives scenario id + params, fires the attack,
-  reports back. Stays a dumb executor. Attack code lives here, not in the app.
-- **Target plane (VMs):** the victims. Reset between reps (see below).
-- **Telemetry plane (Wazuh):** where alerts land and where you investigate.
+A failed reset stops the exercise. VM startup is checked through Proxmox; application and
+telemetry readiness is the private runner's responsibility. A successful process exit
+without a valid case-linked result is an unknown execution, never a passing exercise.
+An SSH timeout does not guarantee the remote process stopped. Reset before retrying an
+unknown execution. Cleanup implementations must terminate leftover exercise processes.
 
-## Decisions (locked)
+The first manual acceptance run should demonstrate all of these:
 
-| Area        | Choice |
-|-------------|--------|
-| Interface   | Small local web UI now (FastAPI + plain HTML/JS, no build step). |
-| Web binding | `127.0.0.1` only. The app can fire attacks; nothing on the LAN may reach it. |
-| Target addr | Entered in the app config; app passes victim to Kali at fire time. |
-| SIEM        | Pluggable adapter seam; **Wazuh** is the one shipped adapter, others plug in. |
-| Reset       | BOTH: Proxmox snapshot revert (hard reset, step zero) + runner cleanup job. |
-| Transport   | Shell out to system `ssh`; no SSH library dependency. |
-| Safety      | Dry-run default; `--fire` gate; Proxmox revert names the VM and confirms. |
+- The installed dashboard and CLI select the same profile and saved cases.
+- The private runner's reported source and objective outcome match the actual exercise.
+- Reset and preflight failures stop execution; an interrupted run cannot be graded.
+- Wazuh retrieval returns the expected target's full evidence and exposes partial/early results.
+- Refreshing or reopening the app preserves the draft and cited events.
+- Submission saves an exportable report, reveals the debrief, and records exactly one score.
+- A replay after a rule change records a new rule revision and matching events; a benign
+  control expecting zero matches can fail when the rule creates a false positive.
 
-## Phased build (each phase is runnable and safe on its own)
-
-1. **Web skeleton + dry-run lay.** Dashboard runs locally. Click lay -> seals
-   truth, SSHes to Kali, Kali prints the plan only. Nothing fires. Grading and
-   stats wired in from here.
-2. **Live fire.** DONE. `--fire` (CLI) or the live-fire checkbox (web) turns the
-   dry run into a real attack. Gated: refuses unless the range is configured and
-   the caller confirms. Records the investigation window for the SIEM pull.
-3. **Reset.** DONE. Proxmox snapshot rollback (gated, names the VM) and/or a
-   cleanup job delegated to the private runner (ACTION=cleanup over SSH), per
-   reset.mode. `draghunt reset --confirm`, or `lay --fire --reset` as step zero.
-4. **SIEM alert pull.** DONE. Dashboard and CLI query the configured SIEM adapter
-   for the fired case's window and show the alerts. `draghunt alerts --case <id>`.
-   Later home of "did my detection rule fire?".
-
-## Config the app will need (one file, laptop, tight perms, never committed)
-
-- **Kali:** address, SSH user, path to the lab SSH key.
-- **Target VM:** address, runner login.
-- **Wazuh indexer:** address + port, read-only credential for the alert index.
-- **Proxmox:** API host, API token, node name, target VM id, clean snapshot name.
-
-## SIEM adapters (any SIEM, one seam)
-
-The app is SIEM-agnostic except for one operation: pulling the alerts for an
-investigation window. That lives behind a small interface (`draghunt/siem`), so a
-new SIEM is a new class, not a fork.
-
-* **Shipped:** Wazuh, querying the indexer's `wazuh-alerts-*` over a time range.
-* **To add one:** subclass `SiemAdapter`, implement `query_alerts`, register it
-  with `@register("name")`. Users pick it via `siem.adapter = "name"` in
-  `range.toml`.
-* This keeps v1 solo-maintainable (one real adapter) while being genuinely open
-  to Splunk, Elastic, or anything else, ideally via community contributions.
-
-## Phase 5 — packaging and desktop app (DONE)
-
-The dashboard is a local backend plus a plain HTML/JS frontend. "Web UI" vs
-"installable app" is only a choice about that frontend's shell and packaging;
-the backend is unchanged. So the web build is the road to a desktop app, not a
-detour.
-
-* **Installable via pip** — already true; the project ships a `draghunt` command.
-* **Desktop app** — DONE. `draghunt desktop` wraps the frontend in a pywebview
-  window (browser fallback if the extra isn't installed). `packaging/install.sh`
-  registers it as a desktop app; `packaging/build-appimage.sh` builds an AppImage.
-  See `docs/PACKAGING.md`. Avoided Electron as planned.
-* **Alternative** — a terminal UI (Textual) if the browser is unwanted, but it
-  would not carry forward into a graphical desktop app.
-
-## Open design notes
-
-- **Blind until submit.** The UI must never render sealed fields (technique,
-  source, account, succeeded) before the verdict is submitted. Alerts are the
-  investigation surface, not the answer key.
-- **Jitter.** `draghunt.sh`'s pre-fire delay fights an interactive click-and-watch
-  UI. Off by default for live reps, optional.
-- **Source IP.** Kali is the attacker now, so the "source" answer is Kali's real
-  address, not a synthetic documentation IP.
-- **Boundary.** The app invokes the user's private runner; it never contains
-  attack code. Private scenario decks plug in without being vendored.
+No hosted layer or further SIEM integration is required for this acceptance test.

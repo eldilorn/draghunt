@@ -1,61 +1,56 @@
 # Architecture
 
-## What makes it a product, not a scorer
+Draghunt is a local Python application with a browser UI and optional native shell.
+Both UI and CLI call `Workflow`; neither implements a separate execution/grading loop.
 
-A grader that diffs two hand-written JSON files is a function, not a product. The value
-is the **closed loop** and the **reason to return**. So the unit of work is a *rep* you
-can actually run, and the thing that pulls you back is your trend over reps. Both had to
-exist for this to be a product; v0.2 builds them around the grader.
+| Module | Responsibility |
+|---|---|
+| `catalog.py`, `data/catalog/` | Validate scenario metadata and choose reproducible parameters; private catalogs are configured separately. |
+| `telemetry.py` | Generate fictional offline evidence, including benign activity. |
+| `config.py` | Validated profiles, stable user locations, environment credentials, relative path resolution. |
+| `fire.py` | SSH quoting, protocol-v1 preflight, execution capture, observed-result validation. |
+| `reset.py` | Confirmed Proxmox rollback/start and private-runner cleanup; stop after failures. |
+| `workflow.py` | Run states, final truth, evidence collection, reports, scoring, replay, detection checks, export. |
+| `store.py` | Private SQLite documents, transactional draft/submission updates, target locks, private file writes. |
+| `schema.py`, `grader.py` | Strict submitted contracts; applicable finding weights and separate report-completeness feedback. |
+| `siem/` | Agent-scoped collection with full event documents, bounded pagination, completeness metadata. |
+| `web.py`, `static/` | Local HTTP API and accessible plain JavaScript UI. Protected requests, text-only dynamic rendering. |
+| `cli.py`, `desktop.py` | Alternate entry points to the same workflow. |
+| `history.py` | Shared statistical aggregation and isolated legacy comparison history. |
 
-```
-  lay ─────────────► seal (JSON ground truth, 0600, git-ignored)
-   │                        │
-   ├─► synthetic telemetry ─┼──► investigate blind
-   │   OR your own runner   │           │
-   │      (real range)      │        verdict (JSON)
-   │                        ▼           │
-   │                     grade ◄────────┘
-   │                        │
-   └────────────────────► record ──► stats (reps, streak, weakest tactic)
-```
+A case owns its intended parameters, finalized observed truth, execution record, evidence,
+draft, first submission, and optional detection checks. Each case has an opaque ID that
+does not encode its scenario. The database and answer-key files are private to the local
+user; they are not an anti-cheating security boundary against that user.
 
-## Modules
+Live cases transition through queued, preflight, optional resetting/readiness, running,
+and awaiting telemetry/investigating. Only verified completed executions become gradeable.
+Reset/preflight/execution errors are separate from an attack objective that was attempted
+and did not succeed. Interrupted or unknown remote outcomes require attention and, for
+unknown execution, a subsequent reset. No action runs merely because a case is resumed.
 
-| File                  | Responsibility |
-|-----------------------|----------------|
-| `draghunt/schema.py`    | `GroundTruth` / `Verdict` contracts + validation. No deps. |
-| `draghunt/catalog.py`   | Load the public deck; `lay()` randomizes (seeded) and seals a case. |
-| `draghunt/telemetry.py` | Synthetic, investigable logs for a laid case. No private content. |
-| `draghunt/grader.py`    | Data-driven rubric → `Report`. All scoring policy lives here. |
-| `draghunt/history.py`   | Append reps to a local JSONL ledger; compute `stats`. |
-| `draghunt/cli.py`       | `list / lay / verdict / grade / stats`. |
-| `draghunt/data/catalog/`| Public scenarios: ATT&CK metadata + randomization knobs only. |
+A target file lock covers preflight/reset/execution across processes sharing a data
+root. Profiles controlling the same target must share that root. SQLite transactions
+protect draft version checks and immutable first submissions. Reports cannot silently
+replace a newer draft from another window. Evidence references remain available in saved
+cases after subsequent queries, so a debrief/export does not depend on SIEM retention.
 
-## The public/private boundary
+Analyst API responses omit the answer key, seed, scenario selection for blind cases,
+runner output, and execution plan until submission. Failed runs can expose diagnostics
+because they are excluded from grading. Choosing a named drill deliberately discloses its
+category. Replays deliberately disclose the prior case and do not count as new first attempts.
 
-The catalog is metadata: an ATT&CK mapping, which accounts and source IPs to randomize
-over, a telemetry recipe. It contains **no attack commands**. Two run modes keep the
-boundary clean:
+The web server binds to loopback. Requests validate Host/Origin/Fetch-Site; API calls also
+require a random per-server token. Mutations require bounded JSON bodies and live requests
+require confirmation. Static assets are served through explicit routes, and a restrictive
+Content Security Policy backs text-node rendering of logs and reports. This is a local
+single-user application, not a remotely deployable multi-user service.
 
-* **Offline:** `telemetry.py` synthesizes logs from the sealed truth. Fully public.
-* **Live:** `lay` seals the truth, then the user fires their *own* private runner
-  (the maintainer's `casefiles-lab`) against a real range. The product orchestrates and
-  grades; it never carries the attack content.
+Scoring has three distinct outputs: finding accuracy, report completeness, and detection
+checks. Report completeness measures fields/references, not semantic truth. Detection
+checks use saved scoped alert snapshots, require completed pagination and an ingestion
+wait, and retain the analyst-declared rule revision and artifact. Rule deployment and
+semantic report review remain in the analyst's workflow.
 
-So the open-source repo can be public in full, and private scenario decks plug in without
-ever being vendored.
-
-## Determinism
-
-`lay(seed=N)` is reproducible: same seed, same case. When no seed is given one is drawn
-and written into the sealed truth's `notes`, so any laid case can be re-laid for review
-or bug reports.
-
-## Deliberately not built yet
-
-* **Live bridge**: fire a user runner and pull real Wazuh telemetry. The seam exists
-  (lay already seals the JSON the runner would need); the fire-and-collect step is next.
-* **Benign decoys**: today every demo case is malicious, so the disposition call is real
-  but not yet adversarial. Decoy scenarios make "malicious vs benign" a genuine decision.
-* **Hosted layer** (FastAPI + SQLite): syncs the same JSONL records. Reserved in
-  `pyproject.toml` under the `hosted` extra.
+A seed reproduces randomized parameters. Event timestamps reflect the new run; replay is
+not a byte-for-byte replay of historic timestamps. Live evidence is always collected again.

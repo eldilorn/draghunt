@@ -17,7 +17,6 @@ Two mechanisms, both requested:
 from __future__ import annotations
 
 import json
-import shlex
 import ssl
 import subprocess
 import time
@@ -25,7 +24,9 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 
-from .config import RangeConfig
+from .config import RangeConfig, ConfigError
+from .fire import ssh_command
+from urllib.parse import quote
 
 
 class ResetBlocked(RuntimeError):
@@ -67,12 +68,12 @@ class ProxmoxReset:
         self.poll_max = poll_max
 
     def _ctx(self):
-        if str(self.px.get("verify_tls", "false")).lower() in ("false", "0", "no"):
+        if str(self.px.get("verify_tls", "true")).lower() in ("false", "0", "no"):
             c = ssl.create_default_context()
             c.check_hostname = False
             c.verify_mode = ssl.CERT_NONE
             return c
-        return None
+        return ssl.create_default_context(cafile=self.px.get("ca_file"))
 
     def _req(self, method: str, path: str) -> dict:
         base = str(self.px["api_url"]).rstrip("/")
@@ -82,34 +83,35 @@ class ProxmoxReset:
         with urllib.request.urlopen(req, context=self._ctx(), timeout=15) as resp:
             return json.loads(resp.read().decode() or "{}")
 
+    def _wait_task(self, upid: str) -> None:
+        if not isinstance(upid, str) or not upid:
+            raise ValueError("no task id returned")
+        node = quote(str(self.px["node"]), safe="")
+        for _ in range(self.poll_max):
+            state = self._req("GET", f"/nodes/{node}/tasks/{quote(upid, safe='')}/status").get("data", {})
+            if state.get("status") == "stopped":
+                if state.get("exitstatus") != "OK":
+                    raise ValueError(f"task exit {state.get('exitstatus')}")
+                return
+            time.sleep(self.poll_interval)
+        raise ValueError("task did not finish in time")
+
     def rollback(self) -> ResetStep:
-        node, vmid, snap = self.px["node"], self.px["vmid"], self.px["snapshot"]
         try:
-            r = self._req("POST", f"/nodes/{node}/qemu/{vmid}/snapshot/{snap}/rollback")
-            upid = r.get("data")
-            if not upid:
-                return ResetStep("proxmox-rollback", False, f"no task id returned: {r}")
-            # poll the task to completion
-            for _ in range(self.poll_max):
-                st = self._req("GET", f"/nodes/{node}/tasks/{upid}/status").get("data", {})
-                if st.get("status") == "stopped":
-                    if st.get("exitstatus") == "OK":
-                        break
-                    return ResetStep("proxmox-rollback", False,
-                                     f"task exit {st.get('exitstatus')}")
-                time.sleep(self.poll_interval)
-            else:
-                return ResetStep("proxmox-rollback", False, "task did not finish in time")
-            # ensure it's running (tolerate 'already running')
-            if str(self.px.get("start_after", "true")).lower() not in ("false", "0", "no"):
-                try:
-                    self._req("POST", f"/nodes/{node}/qemu/{vmid}/status/start")
-                except urllib.error.HTTPError as exc:
-                    if exc.code not in (400, 500):
-                        raise
-            return ResetStep("proxmox-rollback", True,
-                             f"VM {vmid} on {node} reverted to snapshot '{snap}'")
-        except (urllib.error.URLError, OSError, KeyError) as exc:
+            node, vmid, snap = (quote(str(self.px[k]), safe="") for k in ("node", "vmid", "snapshot"))
+            base = f"/nodes/{node}/qemu/{vmid}"
+            self._wait_task(self._req("POST", f"{base}/snapshot/{snap}/rollback").get("data"))
+            if self.px.get("start_after", True):
+                state = self._req("GET", f"{base}/status/current").get("data", {})
+                if state.get("status") != "running":
+                    self._wait_task(self._req("POST", f"{base}/status/start").get("data"))
+                state = self._req("GET", f"{base}/status/current").get("data", {})
+                if state.get("status") != "running":
+                    raise ValueError("VM is not running after startup")
+            return ResetStep("proxmox-rollback", True, f"VM {vmid} on {node} reverted to snapshot '{snap}'")
+        except (urllib.error.URLError, OSError, KeyError, ValueError) as exc:
+            if isinstance(exc, urllib.error.HTTPError):
+                exc.close()
             return ResetStep("proxmox-rollback", False, f"{type(exc).__name__}: {exc}")
 
     def health(self) -> tuple[bool, str]:
@@ -128,16 +130,8 @@ class ProxmoxReset:
 def _cleanup_step(cfg: RangeConfig, scenario_id: str, timeout: int = 120) -> ResetStep:
     if not cfg.attacker.host or not cfg.attacker.user:
         return ResetStep("cleanup", False, "attacker not configured")
-    runner = cfg.runner.dir.rstrip("/") + "/" + cfg.runner.entry
-    env = " ".join(f"{k}={shlex.quote(v)}" for k, v in {
-        "ACTION": "cleanup", "SCN": scenario_id,
-        "TARGET": cfg.target.host or "", "TARGET_USER": cfg.target.user or "",
-    }.items())
-    ssh = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-           "-o", "StrictHostKeyChecking=accept-new"]
-    if cfg.attacker.ssh_key:
-        ssh += ["-i", cfg.attacker.ssh_key]
-    ssh += [f"{cfg.attacker.user}@{cfg.attacker.host}", f"{env} bash {shlex.quote(runner)}"]
+    ssh = ssh_command(cfg, {"DRAGHUNT_PROTOCOL": "1", "ACTION": "cleanup", "SCN": scenario_id,
+                            "TARGET": cfg.target.host, "TARGET_USER": cfg.target.user, "DRY_RUN": "0"})
     try:
         proc = subprocess.run(ssh, capture_output=True, text=True, timeout=timeout)
         ok = proc.returncode == 0
@@ -153,9 +147,13 @@ def reset_target(cfg: RangeConfig, scenario_id: str = "", confirm: bool = False,
                  proxmox_factory=ProxmoxReset) -> ResetResult:
     """Reset the target per reset.mode. Snapshot rollback requires confirm=True."""
     mode = (cfg.reset.mode or "none").lower()
+    if mode not in ("none", "snapshot", "cleanup", "both"):
+        raise ConfigError("invalid reset.mode")
     if mode == "none":
         return ResetResult()
 
+    if not confirm:
+        raise ResetBlocked("reset requires explicit confirmation")
     result = ResetResult()
     if mode in ("snapshot", "both"):
         if not confirm:
@@ -167,6 +165,8 @@ def reset_target(cfg: RangeConfig, scenario_id: str = "", confirm: bool = False,
                                           "not configured: " + ", ".join(miss)))
         else:
             result.steps.append(proxmox_factory(cfg.reset.proxmox).rollback())
+    if not result.ok:
+        return result
     if mode in ("cleanup", "both"):
         result.steps.append(_cleanup_step(cfg, scenario_id))
     return result

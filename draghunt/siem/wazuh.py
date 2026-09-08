@@ -1,89 +1,113 @@
-"""Wazuh adapter — the one SIEM shipped today.
-
-Pulls alerts by querying the Wazuh indexer (the OpenSearch behind the Wazuh
-dashboard) for the `wazuh-alerts-*` index over a time window. Uses stdlib
-urllib so the core stays dependency-free.
-
-The network call is only made when query_alerts runs (phase 4 wires it into the
-UI). Defining it now fixes the contract every other adapter follows.
-"""
-
+"""Scoped Wazuh evidence collection with complete events and bounded scroll pagination."""
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import ssl
 import urllib.error
 import urllib.request
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timezone
+from urllib.parse import quote
 
-from . import Alert, SiemAdapter, register
+from . import Alert, AlertBatch, SiemAdapter, register
 
 
 @register("wazuh")
 class WazuhAdapter(SiemAdapter):
-    def _ctx(self) -> ssl.SSLContext | None:
-        if str(self.options.get("verify_tls", "false")).lower() in ("false", "0", "no"):
+    def _ctx(self):
+        if self.options.get("verify_tls", True) is False:
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
             return ctx
-        return None
+        return ssl.create_default_context(cafile=self.options.get("ca_file"))
 
-    def _request(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    def _request(self, path: str, body: dict | None, method: str = "POST") -> dict:
         base = str(self.options.get("indexer_url", "")).rstrip("/")
         if not base:
             raise RuntimeError("wazuh: indexer_url not configured")
-        user = self.options.get("username", "")
-        pw = self.options.get("password", "") or ""
-        token = base64.b64encode(f"{user}:{pw}".encode()).decode()
-        req = urllib.request.Request(
-            f"{base}{path}",
-            data=json.dumps(body).encode(),
-            headers={"Authorization": f"Basic {token}", "Content-Type": "application/json"},
-            method="POST",
-        )
+        token = base64.b64encode(f"{self.options.get('username', '')}:{self.options.get('password') or ''}".encode()).decode()
+        req = urllib.request.Request(f"{base}{path}", data=None if body is None else json.dumps(body).encode(),
+                                     headers={"Authorization": f"Basic {token}", "Content-Type": "application/json"}, method=method)
         with urllib.request.urlopen(req, context=self._ctx(), timeout=15) as resp:
             return json.loads(resp.read().decode())
 
+    @staticmethod
+    def _query(start: datetime, end: datetime, size: int, agent_id: str = "") -> dict:
+        if start.utcoffset() is None or end.utcoffset() is None or end < start:
+            raise ValueError("query requires an ordered, timezone-aware time window")
+        window = {"range": {"timestamp": {"gte": start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                           "lte": end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}}}
+        query = {"bool": {"filter": [window, {"term": {"agent.id": agent_id}}]}} if agent_id else window
+        return {"size": size, "track_total_hits": True, "sort": [{"timestamp": {"order": "asc"}}], "query": query}
+
+    @staticmethod
+    def _alert(hit: dict) -> Alert:
+        raw = hit.get("_source", {})
+        rule, agent = raw.get("rule", {}), raw.get("agent", {})
+        identity = f"{hit.get('_index', '')}/{hit['_id']}" if hit.get("_id") else json.dumps(raw, sort_keys=True)
+        event_id = "E-" + hashlib.sha256(identity.encode()).hexdigest()[:24]
+        return Alert(raw.get("timestamp", ""), str(rule.get("id", "")), rule.get("level", ""),
+                     agent.get("name", agent.get("ip", "")), rule.get("description", "Raw event"), raw, event_id)
+
     def query_alerts(self, start: datetime, end: datetime, limit: int = 200) -> list[Alert]:
-        index = self.options.get("index", "wazuh-alerts-*")
-        query = {
-            "size": limit,
-            "sort": [{"timestamp": {"order": "asc"}}],
-            "query": {"range": {"timestamp": {
-                "gte": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "lte": end.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            }}},
-        }
-        data = self._request(f"/{index}/_search", query)
-        out: list[Alert] = []
-        for hit in data.get("hits", {}).get("hits", []):
-            s = hit.get("_source", {})
-            rule = s.get("rule", {})
-            agent = s.get("agent", {})
-            out.append(Alert(
-                timestamp=s.get("timestamp", ""),
-                rule=str(rule.get("id", "?")),
-                level=rule.get("level", "?"),
-                source=agent.get("name", agent.get("ip", "?")),
-                description=rule.get("description", ""),
-                raw=s,
-            ))
-        return out
+        """Compatibility API. The case workflow uses collect() and its completeness metadata."""
+        if type(limit) is not int or not 1 <= limit <= 10000:
+            raise ValueError("limit must be between 1 and 10000")
+        index = quote(str(self.options.get("index", "wazuh-alerts-*")), safe="*,-_")
+        data = self._request(f"/{index}/_search", self._query(start, end, limit))
+        return [self._alert(hit) for hit in data.get("hits", {}).get("hits", [])]
+
+    def collect(self, start: datetime, end: datetime, agent_id: str, limit: int = 2000,
+                kind: str = "alerts") -> AlertBatch:
+        if not agent_id:
+            raise ValueError("target.agent_id is required to scope evidence")
+        if type(limit) is not int or not 1 <= limit <= 10000:
+            raise ValueError("limit must be between 1 and 10000")
+        if kind not in ("alerts", "events"):
+            raise ValueError("unknown evidence source")
+        index = self.options.get("events_index") if kind == "events" else self.options.get("index", "wazuh-alerts-*")
+        if not index:
+            raise ValueError("raw event indexing is not configured; set siem.wazuh.events_index after enabling Wazuh archives")
+        scroll = None
+        alerts = []
+        total, exact, healthy = 0, True, True
+        detail = ""
+        try:
+            data = self._request(f"/{quote(str(index), safe='*,-_')}/_search?scroll=1m", self._query(start, end, min(limit, 500), agent_id))
+            count = data.get("hits", {}).get("total", {})
+            if isinstance(count, dict):
+                total = count.get("value", 0)
+                exact = count.get("relation") == "eq"
+            else:
+                total = int(count)
+            while True:
+                scroll = data.get("_scroll_id") or scroll
+                healthy = healthy and not data.get("timed_out", False) and data.get("_shards", {}).get("failed", 0) == 0
+                hits = data.get("hits", {}).get("hits", [])
+                alerts.extend(self._alert(h) for h in hits[:limit - len(alerts)])
+                if not hits or len(alerts) >= limit or (exact and len(alerts) >= total):
+                    break
+                if not scroll:
+                    detail = "indexer did not return a continuation ID"
+                    break
+                data = self._request("/_search/scroll", {"scroll": "1m", "scroll_id": scroll})
+            unique = {a.event_id: a for a in alerts}
+            complete = healthy and exact and len(unique) == total
+            if not complete and not detail:
+                detail = "partial results: increase the limit or check indexer timeouts/shard failures"
+            return AlertBatch(list(unique.values()), total, complete, detail)
+        finally:
+            if scroll:
+                try:
+                    self._request("/_search/scroll", {"scroll_id": [scroll]}, method="DELETE")
+                except (OSError, ValueError):
+                    pass  # The bounded scroll context expires automatically.
 
     def health(self) -> tuple[bool, str]:
-        base = str(self.options.get("indexer_url", "")).rstrip("/")
-        if not base:
-            return (False, "indexer_url not configured")
         try:
-            req = urllib.request.Request(f"{base}/", method="GET")
-            user = self.options.get("username", "")
-            pw = self.options.get("password", "") or ""
-            token = base64.b64encode(f"{user}:{pw}".encode()).decode()
-            req.add_header("Authorization", f"Basic {token}")
-            with urllib.request.urlopen(req, context=self._ctx(), timeout=8) as resp:
-                return (resp.status == 200, f"HTTP {resp.status}")
-        except (urllib.error.URLError, OSError) as exc:
-            return (False, f"unreachable: {exc}")
+            self._request("/", None, method="GET")
+            return True, "Indexer reachable"
+        except (OSError, ValueError, RuntimeError) as exc:
+            return False, str(exc)

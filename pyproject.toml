@@ -19,14 +19,12 @@ draghunt = "draghunt.cli:main"
 [project.optional-dependencies]
 # Native desktop window. The core and the web dashboard need neither of these.
 desktop = ["pywebview>=5"]
-# Reserved for the future hosted grading/tracking layer. Not needed for the core.
-hosted = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.gui-scripts]
 draghunt-desktop = "draghunt.desktop:main"
 
 [tool.setuptools]
-packages = ["draghunt"]
+packages = ["draghunt", "draghunt.siem"]
 
 [tool.setuptools.package-data]
-draghunt = ["data/catalog/*.json"]
+draghunt = ["data/catalog/*.json", "static/*.html", "static/*.js", "static/*.css"]

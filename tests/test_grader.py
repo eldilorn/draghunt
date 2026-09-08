@@ -57,10 +57,11 @@ class TestGrader(unittest.TestCase):
         r = grade(gt(), vd(disposition="inconclusive", source_ip="203.0.113.7"))
         self.assertFalse(r.capped)
 
-    def test_account_missing_from_gt_is_free_points(self):
+    def test_unobservable_account_has_zero_weight(self):
         r = grade(gt(account=None), vd(source_ip="203.0.113.7", succeeded=True))
         acct = next(i for i in r.items if i.dimension == "account")
-        self.assertEqual(acct.earned, acct.weight)
+        self.assertEqual(acct.weight, 0)
+        self.assertEqual(acct.earned, 0)
 
     def test_partial_verdict_scores_without_error(self):
         r = grade(gt(), vd())  # disposition only

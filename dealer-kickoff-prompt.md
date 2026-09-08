@@ -1,3 +1,5 @@
+> Historical design brief, retained for context. Current behavior and scope are documented in README.md and docs/ARCHITECTURE.md. This is not an implementation instruction.
+
 # Dealer product — new-session kickoff prompt
 
 *(Paste everything in the code block below into a fresh Claude Code session tomorrow.

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Draghunt
+Exec=draghunt
+Icon=draghunt
+Terminal=false
+Categories=Development;Education;

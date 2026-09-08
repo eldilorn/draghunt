@@ -64,3 +64,40 @@ class TestWazuhQuery(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestScopedCollection(unittest.TestCase):
+    def test_pagination_preserves_raw_and_scopes_target(self):
+        a = get_adapter('wazuh', {'indexer_url':'https://indexer.test'})
+        calls = []
+        def hit(i):
+            return {'_id':str(i),'_index':'wazuh-alerts-test','_source':{'timestamp':'2026-09-08T12:00:00Z','agent':{'id':'001'},'data':{'srcip':'10.0.0.5'},'full_log':'event '+str(i)}}
+        pages = [{'hits':{'total':{'value':3,'relation':'eq'},'hits':[hit(1),hit(2)]},'_scroll_id':'first'},
+                 {'hits':{'hits':[hit(3)]},'_scroll_id':'second'}]
+        def request(path, body, method='POST'):
+            calls.append((path,body,method))
+            return {} if method=='DELETE' else pages.pop(0)
+        a._request = request
+        start = datetime(2026,9,8,12,tzinfo=timezone.utc)
+        batch = a.collect(start,start,'001',limit=10)
+        self.assertTrue(batch.complete)
+        self.assertEqual(len(batch.alerts),3)
+        self.assertEqual(batch.alerts[0].raw['data']['srcip'],'10.0.0.5')
+        self.assertIn({'term':{'agent.id':'001'}},calls[0][1]['query']['bool']['filter'])
+        self.assertEqual(calls[-1],('/_search/scroll',{'scroll_id':['second']},'DELETE'))
+        self.assertEqual(len({a.event_id for a in batch.alerts}),3)
+
+    def test_truncation_and_partial_shards_are_reported(self):
+        for extra in ({},{'timed_out':True},{'_shards':{'failed':1}}):
+            a = get_adapter('wazuh', {'indexer_url':'https://indexer.test'})
+            a._request = lambda *args,**kwargs: {'hits':{'total':{'value':3,'relation':'eq'},'hits':[{'_id':'1','_source':{}}]},**extra}
+            batch = a.collect(datetime.now(timezone.utc),datetime.now(timezone.utc),'001',limit=1)
+            self.assertFalse(batch.complete)
+            self.assertEqual(batch.total,3)
+
+    def test_raw_event_source_is_explicit(self):
+        a = get_adapter('wazuh', {'indexer_url':'https://indexer.test'})
+        with self.assertRaisesRegex(ValueError,'raw event indexing'):
+            a.collect(datetime.now(timezone.utc),datetime.now(timezone.utc),'001',kind='events')
+        with self.assertRaises(ValueError):
+            a.collect(datetime.now(timezone.utc),datetime.now(timezone.utc),'')

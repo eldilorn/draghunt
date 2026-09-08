@@ -5,9 +5,20 @@
   "tactic": "persistence",
   "difficulty": "medium",
   "disposition": "malicious",
-  "accounts": ["www-data"],
-  "source_pool": ["192.0.2.44", "203.0.113.90", "198.51.100.12"],
+  "accounts": [],
+  "source_pool": [
+    "192.0.2.44",
+    "203.0.113.90",
+    "198.51.100.12"
+  ],
   "succeed_prob": 0.6,
-  "telemetry": { "generator": "web_shell", "log_source": "apache", "volume": [30, 80] },
+  "telemetry": {
+    "generator": "web_shell",
+    "log_source": "apache and process audit",
+    "volume": [
+      30,
+      80
+    ]
+  },
   "brief": "The web tier logged something odd. Find the client that planted a foothold, the technique, and whether it got interactive."
 }

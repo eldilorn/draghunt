@@ -26,7 +26,10 @@ class TestProxmoxRollback(unittest.TestCase):
         px = FakePx(PX, [
             {"data": "UPID:pve:rollback"},                 # rollback POST
             {"data": {"status": "stopped", "exitstatus": "OK"}},  # task poll
-            {"data": {}},                                   # start POST
+            {"data": {"status": "stopped"}},             # VM status
+            {"data": "UPID:pve:start"},                    # start POST
+            {"data": {"status": "stopped", "exitstatus": "OK"}},
+            {"data": {"status": "running"}},
         ])
         step = px.rollback()
         self.assertTrue(step.ok)
@@ -67,7 +70,8 @@ class TestOrchestrator(unittest.TestCase):
     def test_snapshot_uses_factory(self):
         c = self._cfg("snapshot")
         factory = lambda px: FakePx(px, [
-            {"data": "UPID:x"}, {"data": {"status": "stopped", "exitstatus": "OK"}}, {"data": {}}])
+            {"data": "UPID:x"}, {"data": {"status": "stopped", "exitstatus": "OK"}},
+            {"data": {"status": "running"}}, {"data": {"status": "running"}}])
         res = reset_target(c, confirm=True, proxmox_factory=factory)
         self.assertTrue(res.ok)
         self.assertEqual(res.steps[0].name, "proxmox-rollback")
@@ -82,3 +86,31 @@ class TestOrchestrator(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestResetFailureBoundaries(unittest.TestCase):
+    def test_vm_start_failure_is_not_ignored(self):
+        from urllib.error import HTTPError
+        px = FakePx(PX, [])
+        responses = iter([{'data':'UPID:rollback'},{'data':{'status':'stopped','exitstatus':'OK'}},{'data':{'status':'stopped'}}])
+        def req(method,path):
+            if path.endswith('/status/start'):
+                raise HTTPError('https://pve',500,'disk unavailable',{},None)
+            return next(responses)
+        px._req=req
+        self.assertFalse(px.rollback().ok)
+
+    def test_failed_rollback_does_not_run_cleanup(self):
+        from unittest.mock import patch
+        from draghunt.reset import ResetStep
+        cfg=RangeConfig()
+        cfg.reset.mode='both'; cfg.reset.proxmox=PX
+        with patch('draghunt.reset._cleanup_step') as cleanup:
+            result=reset_target(cfg,confirm=True,proxmox_factory=lambda px:FakePx(px,[{'data':None}]))
+        self.assertFalse(result.ok)
+        cleanup.assert_not_called()
+
+    def test_cleanup_also_requires_confirmation(self):
+        cfg=RangeConfig(); cfg.reset.mode='cleanup'
+        with self.assertRaises(ResetBlocked):
+            reset_target(cfg)

@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
-# Build a self-contained Draghunt.AppImage. Requires network + build tools the
-# first time (python-appimage). Run from the repo root: packaging/build-appimage.sh
+# Build an AppImage using the upstream recipe-directory interface.
 set -euo pipefail
-here="$(cd "$(dirname "$0")/.." && pwd)"
-out="$here/dist"; mkdir -p "$out"
-
-# python-appimage bundles a Python runtime + your package into one AppImage.
-# See: https://github.com/niess/python-appimage
-python3 -m pip install --user python-appimage >/dev/null
-
-# Build an AppImage around the app entrypoint. GTK/Qt WebKit for the native
-# window must be present on the build host to be bundled (webkit2gtk on Arch).
-python3 -m python_appimage build app \
-  --name Draghunt \
-  --icon "$here/packaging/draghunt.svg" \
-  --python-version 3.12 \
-  "$here[desktop]"
-
-echo "==> AppImage written under $out (see python-appimage output above)."
-echo "    Note: the native window needs a WebKit backend on the target host."
+project_dir="$(cd "$(dirname "$0")/.." && pwd)"
+out="$project_dir/dist"
+mkdir -p "$out"
+python3 -m venv "$out/build-venv"
+build_python="$out/build-venv/bin/python"
+"$build_python" -m pip install --upgrade build python-appimage
+"$build_python" -m build --wheel --outdir "$out/wheels" "$project_dir"
+recipe="$out/appimage-recipe"
+mkdir -p "$recipe"
+cp "$project_dir/packaging/appimage/draghunt.desktop" "$recipe/"
+cp "$project_dir/packaging/appimage/entrypoint.sh" "$recipe/"
+cp "$project_dir/packaging/draghunt.svg" "$recipe/"
+"$build_python" - "$out/wheels" "$recipe/requirements.txt" <<'PY'
+from pathlib import Path
+import sys
+wheels = sorted(Path(sys.argv[1]).glob('draghunt-*.whl'), key=lambda p: p.stat().st_mtime)
+Path(sys.argv[2]).write_text(str(wheels[-1].resolve()) + '[desktop]\n')
+PY
+cd "$out"
+"$build_python" -m python_appimage build app --python-version 3.12 "$recipe"
+printf '%s\n' "AppImage output: $out"

@@ -52,6 +52,8 @@ class TestTelemetry(unittest.TestCase):
             accepted_from_src = f"Accepted password for {case.ground_truth.account} from {case.ground_truth.source_ip}"
             if case.ground_truth.succeeded:
                 self.assertIn(accepted_from_src, blob)
+            else:
+                self.assertNotIn(accepted_from_src, blob)
 
     def test_all_scenarios_generate(self):
         for sid in load_catalog():

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="session-token" content="__SESSION_TOKEN__">
+<title>Draghunt investigation range</title>
+<link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script>
+</head>
+<body>
+<header><div class="bar"><div class="brand"><h1>Draghunt</h1><span class="sub">investigation range</span></div><div class="pills"><span class="pill" id="rangeStatus">Loading range</span></div></div></header>
+<main class="wrap">
+<div class="sechead"><h2>Your progress</h2><span class="rule"></span></div>
+<div class="kpis">
+<div class="tile"><div class="v" id="kpiHunts">0</div><div class="l">First submissions</div></div>
+<div class="tile g"><div class="v" id="kpiSolved">—</div><div class="l">Passing findings</div></div>
+<div class="tile"><div class="v" id="kpiAvg">—</div><div class="l">Finding accuracy</div></div>
+<div class="tile"><div class="v" id="kpiReport">—</div><div class="l">Report completeness</div></div>
+</div>
+<div class="grid cols2 spaced"><div class="card"><h3>Performance by tactic</h3><div id="tacticBars" class="empty">Complete an exercise to see progress.</div></div><div class="card"><h3>Run modes</h3><div id="modeScores"></div><p class="subtle" id="streak"></p><p class="subtle">Replays are practice and do not change first-submission scores.</p></div></div>
+<details class="card spaced"><summary>Recent finding scores</summary><div id="findingHistory"></div></details>
+<div class="sechead"><h2>Start an exercise</h2><span class="rule"></span></div>
+<div class="card"><div class="row">
+<div><label for="scenario">Scenario</label><select id="scenario"><option value="">Blind assessment</option></select></div>
+<div><label for="seed">Seed (optional drill)</label><input id="seed" type="number" min="0" max="9007199254740991" placeholder="Random"></div>
+<label class="check"><input id="firelive" type="checkbox">Run in my lab</label>
+<label class="check"><input id="resetfirst" type="checkbox">Reset target first</label>
+<button id="laybtn">Run exercise</button></div><p class="subtle" id="rangeDetail"></p></div>
+<p id="message" role="status" aria-live="polite" class="status"></p>
+<div class="workspace"><aside class="card"><h3>Saved exercises</h3><p class="subtle">Open or resume a saved exercise.</p><div id="caseList" class="case-list" role="list" aria-label="Saved exercises"></div><button id="refreshCases" class="ghost spaced">Refresh list</button></aside>
+<div class="main"><section id="caseCard" class="card" hidden>
+<h2 id="caseTitle">Investigation</h2><p class="subtle" id="caseMeta"></p><p class="status" id="caseStatus"></p><p id="brief"></p>
+<details id="diagnosticsBox" hidden><summary>Execution diagnostics</summary><pre id="diagnostics"></pre></details>
+<div id="liveTools" class="toolbar spaced" hidden><label for="sourceKind">Evidence source</label><select id="sourceKind"><option value="alerts">Wazuh alerts</option><option value="events">Raw Wazuh events</option></select><label for="eventLimit">Limit</label><input id="eventLimit" type="number" value="2000" min="1" max="10000"><button id="pullbtn" class="ghost">Refresh evidence</button><a id="wazuhLink" target="_blank" rel="noopener noreferrer" hidden>Open Wazuh</a></div>
+<p id="collectionStatus" class="subtle"></p>
+<div class="toolbar spaced"><label for="eventFilter">Search saved events</label><input id="eventFilter" placeholder="IP, account, command, path, rule…"></div>
+<p class="subtle">Expand an event to inspect its full details. Use Cite to add its ID to your report.</p><div id="events" class="events"></div>
+</section>
+<section id="reportCard" class="card spaced" hidden>
+<form id="reportForm"><fieldset id="reportFields"><legend>Incident report</legend><div class="report-grid">
+<div><label for="v_disp">Disposition</label><select id="v_disp"><option value="inconclusive">Inconclusive</option><option value="malicious">Malicious</option><option value="benign">Benign</option></select></div>
+<div><label for="v_tech">ATT&amp;CK technique</label><input id="v_tech" placeholder="T1110.001, or leave blank"></div>
+<div><label for="v_src">Source IP</label><input id="v_src"></div><div><label for="v_acct">Account</label><input id="v_acct" placeholder="Leave blank if not established"></div>
+<div><label for="v_succ">Did the attack objective succeed?</label><select id="v_succ"><option value="">Unknown / not applicable</option><option value="false">No</option><option value="true">Yes</option></select></div>
+<div><label for="v_confidence">Confidence</label><select id="v_confidence"><option value="">Not supplied</option><option>low</option><option>medium</option><option>high</option></select></div>
+<div class="span2"><label for="v_narr">Summary and reasoning</label><textarea id="v_narr" rows="4"></textarea></div>
+<div class="span2"><label for="v_timeline">Timeline</label><textarea id="v_timeline" rows="3" placeholder="Time, event, evidence ID"></textarea></div>
+<div><label for="v_assets">Affected assets and accounts</label><textarea id="v_assets" rows="3"></textarea></div><div><label for="v_impact">Impact and uncertainty</label><textarea id="v_impact" rows="3"></textarea></div>
+<div class="span2"><label for="v_actions">Recommended actions</label><textarea id="v_actions" rows="3"></textarea></div>
+<div class="span2"><label for="v_evidence">Cited evidence IDs (one per line)</label><textarea id="v_evidence" rows="2"></textarea></div>
+<div class="span2"><label for="v_review">Self-review</label><textarea id="v_review" rows="3" placeholder="Does the cited evidence support each claim? Did you distinguish facts from assumptions and make actionable recommendations?"></textarea></div>
+</div><div class="toolbar spaced"><button id="savebtn" type="button" class="ghost">Save draft</button><button id="gradebtn" type="submit">Submit report</button><span id="saveStatus" class="subtle"></span></div></fieldset></form>
+<div class="toolbar spaced"><button id="exportMd" class="ghost">Export Markdown</button><button id="exportJson" class="ghost">Export JSON</button><button id="replaybtn" class="ghost" hidden>Replay as practice</button></div>
+</section>
+<section id="resultCard" class="card spaced" hidden><h3>Debrief</h3><p id="score" class="score-number"></p><p id="reportScore"></p><p class="subtle" id="reportNote"></p><div id="reportChecks"></div><table id="gradeItems"></table><details><summary>Verified outcome and execution details</summary><pre id="debrief"></pre></details></section>
+<section id="detectionCard" class="card spaced" hidden><h3>Detection check</h3><p class="subtle">After deploying a rule in your lab, run a fresh replay and collect alerts. Record the rule revision used during that run. Checks measure matches within the target's execution window; they do not deploy rules.</p><div class="report-grid">
+<div><label for="ruleId">Wazuh rule ID</label><input id="ruleId"></div><div><label for="ruleRevision">Revision used for this run</label><input id="ruleRevision" placeholder="Commit or version"></div>
+<div class="span2"><label for="ruleText">Rule definition</label><textarea id="ruleText" rows="4"></textarea></div><div><label for="ruleMin">Minimum matches</label><input id="ruleMin" type="number" min="0" value="1"></div><div><label for="ruleMax">Maximum (blank = unlimited)</label><input id="ruleMax" type="number" min="0"></div></div><button id="checkRule" class="spaced">Record detection check</button><div id="detectionResults" class="spaced"></div></section>
+</div></div>
+<div class="card spaced"><h3>Detection revisions</h3><p class="subtle">Positive exercises and benign controls are shown separately. Incomplete or early evidence snapshots cannot produce a pass.</p><div id="detectionHistory"></div></div>
+</main></body></html>

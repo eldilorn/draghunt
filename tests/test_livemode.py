@@ -11,7 +11,9 @@ from draghunt.fire import build_plan, execute, FirePlan, FireResult, FireBlocked
 
 class TestConfig(unittest.TestCase):
     def test_empty_config_is_not_fire_ready(self):
-        self.assertTrue(load("does-not-exist.toml").missing_for_fire())
+        self.assertTrue(RangeConfig().missing_for_fire())
+        with self.assertRaises(ConfigError):
+            load("does-not-exist.toml")
 
     def test_example_toml_parses_and_is_fire_ready(self):
         with tempfile.TemporaryDirectory() as d:
@@ -69,6 +71,8 @@ class TestFirePlan(unittest.TestCase):
         cfg = RangeConfig()
         cfg.attacker.host = "10.0.0.5"; cfg.attacker.user = "kali"
         cfg.target.host = "10.0.0.6"
+        cfg.target.agent_id = "001"
+        cfg.siem.options["indexer_url"] = "https://indexer.test"
         plan = build_plan(lay("DEMO-BRUTE", seed=7), cfg)
         self.assertTrue(plan.ready)
         self.assertEqual(plan.gaps, [])
@@ -93,6 +97,8 @@ class TestFireGates(unittest.TestCase):
     def _ready_live_plan(self):
         cfg = RangeConfig()
         cfg.attacker.host = "10.0.0.5"; cfg.attacker.user = "kali"; cfg.target.host = "10.0.0.6"
+        cfg.target.agent_id = "001"
+        cfg.siem.options["indexer_url"] = "https://indexer.test"
         return build_plan(lay("DEMO-BRUTE", seed=7), cfg, live=True)
 
     def test_execute_without_confirm_refuses(self):

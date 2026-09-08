@@ -1,0 +1,13 @@
+{
+  "id": "DEMO-MAINTENANCE",
+  "title": "Authorized backup validation",
+  "technique": null,
+  "tactic": "benign-control",
+  "difficulty": "easy",
+  "disposition": "benign",
+  "accounts": ["svc-backup", "backup-operator"],
+  "source_pool": ["203.0.113.7", "203.0.113.42", "198.51.100.23"],
+  "succeed_prob": 0,
+  "telemetry": {"generator": "auth_maintenance", "log_source": "sshd and change records", "volume": [30, 60]},
+  "brief": "Review authentication activity and the accompanying change records. Establish what happened and whether it needs escalation."
+}

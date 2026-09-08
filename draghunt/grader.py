@@ -8,7 +8,7 @@ Design choices worth knowing:
 
 * Disposition is the spine. Calling a malicious case "benign" is the one miss
   that should sting, so a disposition of the wrong *polarity* (malicious vs
-  benign) zeroes the rest of the score via a hard cap. Get the call right first;
+  benign) caps the total at 40. Get the call right first;
   the observables are how you prove it.
 * MITRE technique matches at two levels. An exact sub-technique (T1110.001)
   earns full marks; the right parent technique (T1110) earns partial. That
@@ -19,7 +19,7 @@ Design choices worth knowing:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 from .schema import GroundTruth, Verdict
 
@@ -45,7 +45,7 @@ class LineItem:
     dimension: str
     weight: int
     earned: float
-    expected: str
+    expected: str | None
     got: str
     note: str = ""
 
@@ -104,8 +104,10 @@ def _norm_acct(s: str | None) -> str | None:
     return s.strip().lower() if s else None
 
 
-def _technique_score(expected: str, got: str | None, weight: int) -> tuple[float, str]:
+def _technique_score(expected: str | None, got: str | None, weight: int) -> tuple[float, str]:
     """Full marks on exact match, partial on shared parent technique."""
+    if expected is None:
+        return 0.0, "not applicable / not observable"
     if not got:
         return 0.0, "no technique given"
     if got == expected:
@@ -118,7 +120,11 @@ def _technique_score(expected: str, got: str | None, weight: int) -> tuple[float
 
 
 def grade(gt: GroundTruth, v: Verdict, weights: dict[str, int] | None = None) -> Report:
-    w = weights or WEIGHTS
+    w = dict(weights or WEIGHTS)
+    # Facts that the available evidence cannot establish are not scored.
+    for key in ("technique", "account", "succeeded"):
+        if getattr(gt, key) is None:
+            w[key] = 0
     items: list[LineItem] = []
 
     # disposition
@@ -137,7 +143,7 @@ def grade(gt: GroundTruth, v: Verdict, weights: dict[str, int] | None = None) ->
                           float(w["source_ip"]) if ip_ok else 0.0,
                           gt.source_ip, v.source_ip or "-"))
 
-    # account (may be absent from ground truth; then it's a free dimension)
+    # An unobservable account has zero weight.
     if gt.account is None:
         items.append(LineItem("account", w["account"], float(w["account"]),
                               "n/a", v.account or "-", "no account in scenario"))
@@ -147,7 +153,7 @@ def grade(gt: GroundTruth, v: Verdict, weights: dict[str, int] | None = None) ->
                               float(w["account"]) if acct_ok else 0.0,
                               gt.account, v.account or "-"))
 
-    # succeeded
+    # Outcome may be unknown and therefore excluded from the rubric.
     if v.succeeded is None:
         s_earned = 0.0
         s_got = "-"
@@ -155,7 +161,8 @@ def grade(gt: GroundTruth, v: Verdict, weights: dict[str, int] | None = None) ->
         s_earned = float(w["succeeded"]) if v.succeeded == gt.succeeded else 0.0
         s_got = str(v.succeeded).lower()
     items.append(LineItem("succeeded", w["succeeded"], s_earned,
-                          str(gt.succeeded).lower(), s_got))
+                          "n/a" if gt.succeeded is None else str(gt.succeeded).lower(), s_got,
+                          "outcome not observable" if gt.succeeded is None else ""))
 
     total_weight = sum(w.values())
     earned = sum(i.earned for i in items)
@@ -170,3 +177,23 @@ def grade(gt: GroundTruth, v: Verdict, weights: dict[str, int] | None = None) ->
         capped = True
 
     return Report(gt.scenario_id, total, _band(total), items, capped)
+
+
+RUBRIC_VERSION = "2"
+
+
+def report_dict(report: Report) -> dict:
+    return {**asdict(report), "rubric_version": RUBRIC_VERSION}
+
+
+def report_completeness(verdict: Verdict, evidence_ids: set[str]) -> dict:
+    """Structural feedback, explicitly not a judgment of prose quality or reasoning."""
+    checks = {
+        "summary": bool(verdict.narrative), "timeline": bool(verdict.timeline),
+        "affected_assets": bool(verdict.assets), "impact": bool(verdict.impact),
+        "recommended_actions": bool(verdict.actions), "confidence": bool(verdict.confidence),
+        "evidence_cited": bool(verdict.evidence_ids) and set(verdict.evidence_ids) <= evidence_ids,
+        "self_review": bool(verdict.self_review),
+    }
+    return {"total": round(100 * sum(checks.values()) / len(checks), 1), "checks": checks,
+            "label": "Report completeness", "note": "Checks structure and saved evidence references. Review the reasoning yourself; prose quality is not automatically graded."}

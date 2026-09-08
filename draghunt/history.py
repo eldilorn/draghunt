@@ -1,15 +1,10 @@
-"""Local attempt history — the reason to come back.
-
-Every graded rep can be appended to a local JSONL ledger. `stats()` turns that
-ledger into the things that make practice stick: how many reps, pass rate,
-current streak, and which ATT&CK tactic you are weakest at. This is deliberately
-local-first; the future hosted layer syncs the same records, it does not replace
-them.
-"""
+"""Legacy JSONL comparisons and shared score aggregation. Saved cases use SQLite."""
 
 from __future__ import annotations
 
 import json
+import fcntl
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,10 +15,11 @@ from .schema import GroundTruth
 DEFAULT_STORE = Path(".draghunt") / "history.jsonl"
 
 
-def record(report: Report, gt: GroundTruth, store: Path | None = None) -> Path:
+def record(report: Report, gt: GroundTruth, store: Path | None = None, case_id: str | None = None) -> Path:
     path = store or DEFAULT_STORE
     path.parent.mkdir(parents=True, exist_ok=True)
     entry = {
+        "case_id": case_id,
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "scenario_id": report.scenario_id,
         "technique": gt.technique,
@@ -33,8 +29,13 @@ def record(report: Report, gt: GroundTruth, store: Path | None = None) -> Path:
         "passed": report.total >= 60,
         "capped": report.capped,
     }
-    with path.open("a") as fh:
-        fh.write(json.dumps(entry) + "\n")
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    with os.fdopen(fd, "r+") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        rows = [json.loads(line) for line in fh if line.strip()]
+        if case_id is None or not any(row.get("case_id") == case_id for row in rows):
+            fh.seek(0, 2)
+            fh.write(json.dumps(entry) + "\n")
     return path
 
 
@@ -90,7 +91,10 @@ class Stats:
 
 
 def stats(store: Path | None = None) -> Stats:
-    rows = load(store)
+    return from_rows(load(store))
+
+
+def from_rows(rows: list[dict]) -> Stats:
     n = len(rows)
     if n == 0:
         return Stats(0, 0, 0.0, 0, 0.0, None, {})

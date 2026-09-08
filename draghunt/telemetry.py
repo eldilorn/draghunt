@@ -14,6 +14,7 @@ import random
 from datetime import datetime, timedelta, timezone
 
 from .catalog import Hunt
+from .schema import SchemaError
 
 _BENIGN_IPS = ["10.0.0.14", "10.0.0.31", "10.0.0.52", "192.168.1.20"]
 _BENIGN_USERS = ["alice", "bob", "root", "backup"]
@@ -89,6 +90,11 @@ def _web_shell(case: Hunt, rng: random.Random, n: int) -> list[str]:
                 f'{gt.source_ip} - - [{t.strftime("%d/%b/%Y:%H:%M:%S +0000")}] '
                 f'"GET {shell}?cmd=id HTTP/1.1" 200 {rng.randint(20,90)}'
             )
+    t += timedelta(seconds=1)
+    if gt.succeeded:
+        lines.append(f'{_stamp(t)} web01 audit: parent=php-fpm exe=/usr/bin/id request={shell} client={gt.source_ip} exit=0')
+    else:
+        lines.append(f'{_stamp(t)} web01 upload-validator: client={gt.source_ip} file=payload.php result=rejected reason=executable-extension')
     rng.shuffle(lines)
     return lines
 
@@ -116,7 +122,25 @@ def _dns_exfil(case: Hunt, rng: random.Random, n: int) -> list[str]:
     return lines
 
 
+def _auth_maintenance(case: Hunt, rng: random.Random, n: int) -> list[str]:
+    gt = case.ground_truth
+    t = _base_time(gt.laid_utc, rng)
+    lines = [f"{_stamp(t)} change-control: CHG-1042 approved backup validation account={gt.account} source={gt.source_ip} window=10m"]
+    for i in range(n):
+        t += timedelta(seconds=rng.randint(3, 8))
+        if i == 3:
+            line = f"sshd[1701]: Failed password for {gt.account} from {gt.source_ip} port 42001 ssh2"
+        elif i == 4:
+            line = f"sshd[1701]: Accepted publickey for {gt.account} from {gt.source_ip} port 42001 ssh2"
+        else:
+            line = f"sshd[1400]: Accepted publickey for {rng.choice(_BENIGN_USERS)} from {rng.choice(_BENIGN_IPS)} port 42002 ssh2"
+        lines.append(f"{_stamp(t)} moria {line}")
+    lines.append(f"{_stamp(t)} change-control: CHG-1042 validation complete; approved backup task only")
+    return lines
+
+
 _GENERATORS = {
+    "auth_maintenance": _auth_maintenance,
     "auth_bruteforce": _auth_bruteforce,
     "web_shell": _web_shell,
     "dns_exfil": _dns_exfil,
@@ -128,8 +152,12 @@ def generate(case: Hunt, seed: int | None = None) -> list[str]:
     spec = case.scenario.telemetry
     gen = _GENERATORS.get(spec.get("generator", ""))
     if gen is None:
-        return [f"# no telemetry generator for scenario {case.scenario.id}"]
+        raise SchemaError(f"no offline telemetry generator for scenario {case.scenario.id}")
     rng = random.Random((seed if seed is not None else case.seed) ^ 0x5EED)
     lo, hi = (spec.get("volume") or [40, 100])[:2]
     n = rng.randint(int(lo), int(hi))
     return gen(case, rng, n)
+
+
+def supports(scenario) -> bool:
+    return scenario.telemetry.get("generator") in _GENERATORS

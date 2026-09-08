@@ -14,24 +14,32 @@ import threading
 import webbrowser
 
 from .web import make_httpd
+from .config import RangeConfig
 
 
-def start_server(port: int = 0) -> tuple:
+def start_server(port: int = 0, cfg: RangeConfig | None = None) -> tuple:
     """Start the control center in a daemon thread. port=0 picks a free port."""
-    httpd = make_httpd("127.0.0.1", port)
+    httpd = make_httpd("127.0.0.1", port, cfg)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     return httpd, thread, httpd.server_address[1]
 
 
+class NativeUnavailable(RuntimeError):
+    pass
+
+
 def _open_native(url: str) -> None:
     import webview  # optional dep; ImportError handled by caller
-    webview.create_window("Draghunt", url, width=1100, height=820, min_size=(720, 560))
-    webview.start()
+    try:
+        webview.create_window("Draghunt", url, width=1200, height=900, min_size=(720, 560))
+        webview.start()
+    except webview.WebViewException as exc:
+        raise NativeUnavailable(str(exc)) from exc
 
 
 def _open_browser_and_block(url: str) -> None:
-    print(f"pywebview not installed — opening {url} in your browser.")
+    print(f"Native window unavailable — opening {url} in your browser.")
     print("For a native window:  pip install 'draghunt[desktop]'")
     print("Ctrl-C to stop.")
     webbrowser.open(url)
@@ -43,9 +51,9 @@ def _open_browser_and_block(url: str) -> None:
         pass
 
 
-def run(port: int | None = None, opener=None) -> str:
+def run(port: int | None = None, opener=None, cfg: RangeConfig | None = None) -> str:
     """Launch the desktop app. `opener(url)` is injectable for testing."""
-    httpd, _thread, actual = start_server(port or 0)
+    httpd, _thread, actual = start_server(port or 0, cfg)
     url = f"http://127.0.0.1:{actual}"
     try:
         if opener is not None:
@@ -53,10 +61,12 @@ def run(port: int | None = None, opener=None) -> str:
         else:
             try:
                 _open_native(url)
-            except ImportError:
+            except (ImportError, NativeUnavailable):
                 _open_browser_and_block(url)
     finally:
         httpd.shutdown()
+        httpd.server_close()
+        _thread.join(timeout=5)
     return url
 
 

@@ -1,182 +1,174 @@
 # Draghunt
 
-Realistic blue-team investigation reps in **your own lab**, not on a stranger's frozen
-incident. You own the whole loop:
+Practice alert triage, incident reporting, and detection engineering in your own lab.
+The dashboard lets you run an exercise, investigate its events, save an evidence-backed
+report, submit it, and revisit your scores and debrief.
 
-> lay → seal ground truth → investigate telemetry blind → write a verdict → grade → track
+The build includes persistent cases and reports, protected local controls, synthetic
+exercises, and a versioned private-runner integration. The synthetic workflow works
+without a lab. Live use requires a compatible private dispatcher and a configured
+Wazuh/target environment; installing this repository alone does not provide attacks.
 
-LetsDefend and CyberDefenders hand you a stranger's frozen pcap that everyone else also
-downloaded, so you never own the ground truth and can't tune a detection against it. The
-Draghunt flips that: it lays *you* a randomized, MITRE-mapped case, seals the truth before
-you look, and grades your verdict against it.
+## Start the dashboard
 
-## Status
-
-**v0.8 — full live loop, a scores dashboard, and an installable desktop app.** Lay a drag, get
-synthetic telemetry to investigate, submit a verdict, get graded, and track your reps
-over time. When you have a range, the same `lay` bridges to your own attack runner
-instead of the synthetic telemetry (see "Two ways to run" below).
-
-* **SIEM:** Wazuh is the target for the live path. It's the maintainer's homelab stack.
-* **Shape:** open-source, self-hostable loop; a hosted grading/tracking layer is the
-  eventual open-core line. No billing or multi-tenant auth yet, by design.
-
-## Run a full rep in 60 seconds
-
-No install, no dependencies — Python 3.11+ standard library only.
+Linux with Python 3.11+; the application core uses the standard library.
 
 ```bash
-# 1. lay a drag: seals the truth, drops telemetry to investigate, prints a blind brief
-python -m draghunt lay --scenario DEMO-BRUTE
-
-# 2. investigate the printed telemetry/*.log file the way you'd work Wazuh
-
-# 3. write your verdict, then fill it in
-python -m draghunt verdict --out verdict.json
-
-# 4. grade it against the sealed truth, and record the rep
-python -m draghunt grade --truth .groundtruth/<sealed>.json --verdict verdict.json --record
-
-# 5. see how you're trending
-python -m draghunt stats
+python -m draghunt web
+# Open http://127.0.0.1:8787
 ```
 
-A graded rep looks like this:
+1. Choose **Blind assessment** or a named drill, then click **Run exercise**.
+2. Expand/search saved events and use **Cite** to reference evidence in your report.
+3. Write your findings, timeline, affected assets, impact, and recommendations.
+   Drafts autosave; **Save draft** also saves immediately.
+4. Submit the report. The answer key and execution details become available in the debrief.
+5. Reopen an exercise from **Saved exercises**, or export its report as Markdown/JSON.
+   **Replay as practice** preserves the scenario parameters and saves another case.
 
+The default deck contains SSH password guessing, a web-shell attempt, suspicious DNS
+exfiltration activity, and authorized backup activity as a benign control. These are
+synthetic exercises with fictional events. Facts the evidence cannot establish are
+excluded from scoring; resolver queries alone do not establish completed exfiltration.
+
+## Scores
+
+**Finding accuracy** compares disposition, ATT&CK technique, source IP, account, and
+objective outcome against the hidden answer key. Applicable weights are 30/25/15/15/15,
+normalized to 100 after excluding unobservable/not-applicable fields. A wrong
+malicious/benign disposition caps accuracy at 40. Parent-technique matches earn partial
+credit. A score of 60 or more passes the findings rubric.
+
+**Report completeness** separately checks summary, timeline, affected assets, impact,
+actions, confidence, valid saved evidence references, and self-review. It does not
+claim to judge prose quality or whether every citation logically supports a claim.
+Use the self-review prompt for that assessment.
+
+The first submission is immutable. Clicking Submit again cannot create another score.
+Replays remain available in history but are excluded from first-submission averages and
+streaks. Synthetic and live results are also broken out by mode.
+
+## Configuration and storage
+
+The dashboard, desktop app, and CLI share stable locations:
+
+- Config: `$XDG_CONFIG_HOME/draghunt/range.toml`, normally `~/.config/draghunt/range.toml`.
+- Data: `$XDG_DATA_HOME/draghunt`, normally `~/.local/share/draghunt`.
+- Overrides: `DRAGHUNT_CONFIG`, `DRAGHUNT_DATA_DIR`, or `draghunt --config /path/range.toml …`.
+
+```bash
+python -m draghunt init-config
 ```
-Draghunt verdict report — scenario DEMO-BRUTE
-Score: 100/100   Grade: A — clean read
 
-  OK disposition  30.0/30  expected='malicious' got='malicious'
-  OK technique    25.0/25  expected='T1110.001' got='T1110.001'  (exact)
-  OK source_ip    15.0/15  expected='203.0.113.42' got='203.0.113.42'
-  OK account      15.0/15  expected='deploy' got='deploy'
-  OK succeeded    15.0/15  expected='true' got='true'
-```
+`control.data_dir` and `control.catalog_dir` may override these locations; relative
+paths resolve against the profile file. Cases, drafts, reports, evidence snapshots,
+and detection checks are stored in `cases.sqlite3`. Final answer keys also have private
+JSON files under `sealed/`. Treat the whole data directory as private and back it up.
+The answer key is hidden by the application, not encrypted against the machine owner.
 
-And `stats` is the reason to come back:
+Existing legacy `range.toml`, `.groundtruth/`, `telemetry/`, and `.draghunt/history.jsonl`
+are left untouched. Select an old profile explicitly with `--config ./range.toml` and
+update its runner/agent settings before live use. Old truth/verdict files can still be
+compared with `grade --truth`; recorded legacy comparisons are kept separately from
+new case scores. Old score-only history cannot reconstruct reports that were never saved.
 
-```
-Draghunt stats
-  reps      : 3
-  passed    : 3 (100%)
-  avg score : 77/100
-  streak    : 3 in a row
-  by tactic :
-      exfiltration           60/100   <- weakest
-      credential-access      85/100
-```
+## Connect your lab
 
-## The deck
+Keep private attack content in your own runner repository. Configure its metadata path
+with `control.catalog_dir`, and mark supported private scenarios `"live": true`.
+The private catalog extends the included demo deck for both CLI and dashboard. Use unique
+IDs. Public demo scenarios cannot be fired live.
+
+The dispatcher must implement [runner protocol v1](docs/RUNNER-PROTOCOL.md): a read-only
+preflight plus a structured, case-linked result with actual source/account/outcome,
+action timestamps, and verification references. An exit code of zero is insufficient.
+An intended success parameter is never treated as the observed outcome.
+
+Set the target's Wazuh `agent_id`, indexer URL, and read credential. Alert collection is
+restricted to that agent and the saved execution window; complete raw documents are
+retained with stable evidence IDs. Collection paginates and reports truncation or
+partial indexer results. **Raw Wazuh events** additionally requires archive indexing and
+`siem.wazuh.events_index`. Missing alerts alone do not prove missing activity.
+
+Optional reset modes are `snapshot`, `cleanup`, `both`, and `none`. Snapshot resets wait
+for Proxmox rollback/start tasks. Failed resets stop the run. The runner must confirm
+target services and telemetry readiness before execution. One controller data directory
+serializes operations against each configured target. Use the same data directory for
+profiles that control the same target.
+
+Live runs require explicit CLI `--fire` or confirmation of the named target in the UI.
+A timed-out or unverifiable execution is ungraded and requires a successful reset before
+another live run; remote processes may outlive a disconnected SSH session.
+
+See [live operation and acceptance checks](docs/LIVE-MODE-PLAN.md). No live lab execution
+is implied by the automated test suite.
+
+## Detection exercises
+
+Deploy/edit your Wazuh rule using your existing lab tools, then run or replay an exercise.
+After submitting its report, refresh a complete alert snapshot after the configured
+ingestion wait. Record the rule ID, revision, definition, and expected match range under
+**Detection check**. Benign controls must expect zero matches.
+
+Checks retain the declared rule definition/hash, revision, matched evidence, pass/fail,
+and first-match latency. The dashboard compares results across cases and revisions.
+Use a fresh replay after changing a rule: querying old indexed alerts does not rerun the
+new rule against old events. Revision labels are supplied by the analyst; Draghunt does
+not inspect/deploy manager rule files or independently verify the deployed revision.
+Matches are measured within a target/time window, not proof of causality in a busy lab.
+
+## CLI
+
+Use `--config` before the command when selecting a profile.
 
 ```bash
 python -m draghunt list
+python -m draghunt lay --scenario DEMO-BRUTE --seed 7
+python -m draghunt cases
+python -m draghunt case CASE_ID
+python -m draghunt verdict --case CASE_ID --out verdict.json
+# Edit the report and cite event IDs from the case.
+python -m draghunt save --case CASE_ID --verdict verdict.json
+python -m draghunt grade --case CASE_ID --verdict verdict.json
+python -m draghunt export --case CASE_ID --format markdown --out report.md
+python -m draghunt stats
 ```
 
-Ships with three synthetic demo scenarios (SSH brute force, web shell, DNS exfil), each
-mapped to ATT&CK. Every lay randomizes the source, the account, and whether the attack
-lands, and seals that truth blind — so no two reps are the same and the answer key is
-never the one everyone else downloaded.
-
-
-## Control center (web dashboard)
-
-A local, zero-dependency dashboard drives the whole loop from the browser:
+For a configured private scenario:
 
 ```bash
-python -m draghunt web        # http://127.0.0.1:8787
+python -m draghunt --config /path/to/range.toml lay --scenario PRIVATE-01 --fire --reset
+python -m draghunt --config /path/to/range.toml alerts --case CASE_ID --limit 5000
+python -m draghunt --config /path/to/range.toml alerts --case CASE_ID --kind events
+python -m draghunt --config /path/to/range.toml detection --case CASE_ID \
+  --rule-id 100001 --revision v2 --rule-file rule.xml --minimum 1
 ```
 
-Lay a drag, read the synthetic telemetry, submit a verdict, and see it graded,
-all in one page. It binds to localhost only, on purpose: live mode can fire real
-attacks, so nothing on your network may reach the button.
+New case submissions are always recorded. `grade --truth T.json --verdict V.json` remains
+a standalone legacy comparison; `--record` deduplicates by truth-file identity and keeps
+those comparisons separate. `--json` emits parseable JSON without trailing prose.
+CLI exit codes: 0 success/pass, 1 completed failing grade/check or unsuccessful live run,
+2 invalid input/configuration or a refused operation.
 
+## Desktop and packaging
 
-### Desktop app
+`python -m draghunt desktop` opens a pywebview window when its optional dependency and
+GUI backend are available, otherwise a browser dashboard. The server stays running until
+the native window closes or the launching process is stopped.
 
-Run the dashboard in a native window instead of a browser:
+`packaging/install.sh` installs into an isolated environment and registers a desktop
+launcher. See [packaging](docs/PACKAGING.md) for the AppImage recipe and validation scope.
+
+## Development
 
 ```bash
-draghunt desktop            # falls back to your browser if pywebview is absent
-packaging/install.sh        # install it as a real app (menu entry + icon)
+PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -v
+node --check draghunt/static/app.js
 ```
 
-See `docs/PACKAGING.md` for the native-window backend and the AppImage build.
-
-## Live mode (planned, phased)
-
-The same dashboard is the control center for a real range: it lays and seals a
-case, drives your Kali box over SSH to fire your own attack runner, pulls the
-alerts from your SIEM, grades your verdict, and resets the target between reps.
-Live fire is real as of v0.4, behind an explicit gate: it refuses unless the range
-is configured and you confirm. Fire from the CLI with `draghunt lay --scenario S01 --fire`,
-or tick the live-fire box in the dashboard. Set it up with:
-
-```bash
-python -m draghunt init-config   # writes an example range.toml (0600)
-```
-
-See `docs/LIVE-MODE-PLAN.md` for the architecture, the phased build, and the
-config you'll need (Kali, target, SIEM, Proxmox).
-
-### Any SIEM, one seam
-
-Everything is SIEM-agnostic except pulling alerts, which lives behind a small
-adapter interface (`draghunt/siem`). **Wazuh** is the one shipped adapter; adding
-Splunk, Elastic, or anything else is a new class, not a fork.
-
-## Two ways to run
-
-1. **Offline (default).** `lay` writes synthetic telemetry you investigate directly. No
-   range needed. This is how the demo scenarios above work.
-2. **Against your range.** `lay` seals the same JSON truth, and you fire the matching
-   attack from your **own private runner** (e.g. the maintainer's `casefiles-lab`), then
-   investigate the real telemetry in Wazuh. Draghunt never ships attack code; it lays
-   the case and grades the verdict. Your scenarios stay yours.
-
-## How grading works
-
-Data-driven rubric (`draghunt/grader.py`, `WEIGHTS`):
-
-| Dimension   | Weight | Notes |
-|-------------|:------:|-------|
-| disposition |   30   | The spine. Calling malicious "benign" (or vice versa) caps the whole score at 40. |
-| technique   |   25   | Exact ATT&CK sub-technique = full; right parent technique = partial. |
-| source_ip   |   15   | Exact match. |
-| account     |   15   | Case-insensitive; a scenario with no account gives the points for free. |
-| succeeded   |   15   | Did the attack achieve its objective? |
-
-Exit codes: `0` pass (≥60) / ok, `1` failing grade, `2` bad input — so it slots into CI.
-
-## Commands
-
-| Command | What it does |
-|---------|--------------|
-| `draghunt list` | show the scenario deck |
-| `draghunt lay [--scenario ID] [--seed N]` | seal a case, drop telemetry, print a blind brief |
-| `draghunt verdict --out V.json` | write a blank verdict to fill in |
-| `draghunt grade --truth T --verdict V [--record] [--json]` | score it, optionally record |
-| `draghunt reset --confirm` | reset the target (snapshot rollback and/or cleanup) |
-| `draghunt alerts --case <id>` | pull SIEM alerts for a fired case's window |
-| `draghunt stats` | reps, pass rate, streak, weakest tactic |
-
-## Roadmap
-
-- [x] Grading core with a data-driven rubric
-- [x] `lay` — seal a case to JSON, deterministic with `--seed`
-- [x] Synthetic telemetry so a rep is playable offline
-- [x] Local tracking (`stats`): reps, pass rate, streak, weakest tactic
-- [ ] Bridge `lay` to fire a user-supplied runner and pull real Wazuh telemetry
-- [ ] Benign decoy scenarios (so "malicious vs benign" is a real call, not a given)
-- [ ] Hosted grading/tracking layer (FastAPI + SQLite) syncing the same records
-
-## Scope notes
-
-This repo is the **product**. The maintainer's private scenario lab (real attack content)
-lives elsewhere and is deliberately not vendored here. The demo scenarios and all
-telemetry are synthetic and use only RFC 5737 / RFC 2606 documentation ranges and
-example.com.
-
-## License
+Tests use temporary data, harmless local commands, and fake runner/SIEM/reset responses.
+HTTP tests require localhost sockets. [Architecture](docs/ARCHITECTURE.md) describes the
+shared workflow and storage boundaries. Hosting, billing, and additional SIEM adapters
+are outside the current build.
 
 Apache-2.0.
