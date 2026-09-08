@@ -54,7 +54,12 @@ class Handler(BaseHTTPRequestHandler):
         if host not in valid_hosts or (origin is not None and origin != "http://" + host):
             self._json(403, {"error": "request host/origin is not allowed"})
             return False
-        if self.headers.get("Sec-Fetch-Site") not in (None, "none", "same-origin"):
+        # A cross-site *top-level navigation* to the page is just the user opening the app
+        # from a link or bookmark; the initiator cannot read the response. Cross-site
+        # fetches, subresources, and every API call are still refused.
+        navigating = (self.headers.get("Sec-Fetch-Mode") == "navigate"
+                      and self.headers.get("Sec-Fetch-Dest") == "document" and not api)
+        if self.headers.get("Sec-Fetch-Site") not in (None, "none", "same-origin") and not navigating:
             self._json(403, {"error": "cross-site request refused"})
             return False
         if api and not secrets.compare_digest(self.headers.get("X-Draghunt-Token", ""), self.server.session_token):

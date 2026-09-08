@@ -90,6 +90,15 @@ class WebTest(unittest.TestCase):
         js = (Path(__file__).parents[1]/'draghunt/static/app.js').read_text()
         self.assertNotIn('innerHTML',js)
 
+    def test_cross_site_navigation_loads_page_but_api_is_refused(self):
+        # Opening the page from a link or bookmark is a cross-site navigation and must work;
+        # cross-site API calls must still be refused.
+        nav = {'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document'}
+        self.assertEqual(self.request('/', headers=nav, token=False)[0], 200)
+        self.assertEqual(self.request('/api/state', headers=nav)[0], 403)
+        self.assertEqual(self.request('/api/lay', {'scenario': 'DEMO-BRUTE'}, headers=nav)[0], 403)
+        self.assertEqual(self.server.workflow.cases(), [])
+
 
 class ConfigEndpointTest(unittest.TestCase):
     """The Settings panel: GET redacts secrets, POST writes the profile and enables live runs."""
@@ -144,3 +153,4 @@ class ConfigEndpointTest(unittest.TestCase):
         for bad in ({'siem': {'indexer_url': 'http://indexer.test'}},
                     {'target': {'host': '10.0.0.6'}, 'reset': {'mode': 'both', 'proxmox': {'vmid': '101', 'target_host': '10.9.9.9'}}}):
             self.assertEqual(self.request('/api/config', bad)[0], 400)
+
