@@ -17,9 +17,9 @@ from .web import make_httpd
 from .config import RangeConfig
 
 
-def start_server(port: int = 0, cfg: RangeConfig | None = None) -> tuple:
+def start_server(port: int = 0, cfg: RangeConfig | None = None, config_path=None) -> tuple:
     """Start the control center in a daemon thread. port=0 picks a free port."""
-    httpd = make_httpd("127.0.0.1", port, cfg)
+    httpd = make_httpd("127.0.0.1", port, cfg, config_path)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     return httpd, thread, httpd.server_address[1]
@@ -51,9 +51,9 @@ def _open_browser_and_block(url: str) -> None:
         pass
 
 
-def run(port: int | None = None, opener=None, cfg: RangeConfig | None = None) -> str:
+def run(port: int | None = None, opener=None, cfg: RangeConfig | None = None, config_path=None) -> str:
     """Launch the desktop app. `opener(url)` is injectable for testing."""
-    httpd, _thread, actual = start_server(port or 0, cfg)
+    httpd, _thread, actual = start_server(port or 0, cfg, config_path)
     url = f"http://127.0.0.1:{actual}"
     try:
         if opener is not None:

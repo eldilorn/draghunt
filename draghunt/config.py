@@ -167,10 +167,12 @@ def _holds_inline_secret(doc: dict) -> bool:
     return bool(adapter.get("password") or proxmox.get("token_secret"))
 
 
-def load(path: str | Path | None = None) -> RangeConfig:
+def load(path: str | Path | None = None, missing_ok: bool = False) -> RangeConfig:
     p = Path(path).expanduser() if path is not None else default_path()
     if not p.exists():
-        if path is not None or os.environ.get("DRAGHUNT_CONFIG"):
+        # missing_ok lets the dashboard start in synthetic mode and create the profile
+        # from the Settings panel, so first-run setup does not require a file to exist yet.
+        if not missing_ok and (path is not None or os.environ.get("DRAGHUNT_CONFIG")):
             raise ConfigError(f"configuration not found: {p}")
         return RangeConfig()
     try:
@@ -240,3 +242,117 @@ snapshot = "clean"
 target_host = "192.168.45.74"     # must equal [target].host; binds the rollback to the attack target
 # ca_file = "/absolute/path/to/lab-ca.pem"
 '''
+
+
+# --- Settings panel support: read a redacted profile, write one back ----------
+# The dashboard needs to show and edit the profile without ever handing secrets
+# back to the browser. public_profile() redacts them; form_to_tables() merges a
+# submitted form with any secret already on disk, and to_toml() serializes the
+# result (stdlib has no TOML writer, so this is a small deliberate one).
+
+_SECRET_KEYS = {"password", "token_secret"}
+
+
+def public_profile(cfg: "RangeConfig", path: str | Path) -> dict:
+    """The profile as the browser may see it: secrets replaced by has_* booleans."""
+    opts, px = cfg.siem.options, cfg.reset.proxmox
+    return {
+        "path": str(path),
+        "control": {"catalog_dir": cfg.catalog_dir, "data_dir": cfg.data_dir},
+        "attacker": {"host": cfg.attacker.host, "user": cfg.attacker.user, "ssh_key": cfg.attacker.ssh_key},
+        "target": {"host": cfg.target.host, "user": cfg.target.user, "agent_id": cfg.target.agent_id},
+        "runner": {"dir": cfg.runner.dir, "entry": cfg.runner.entry, "ready_timeout": cfg.runner.ready_timeout},
+        "siem": {"adapter": cfg.siem.adapter, "indexer_url": opts.get("indexer_url", ""),
+                 "index": opts.get("index", ""), "events_index": opts.get("events_index", ""),
+                 "username": opts.get("username", ""), "dashboard_url": opts.get("dashboard_url", ""),
+                 "ca_file": opts.get("ca_file", ""), "ingest_wait": cfg.siem.ingest_wait,
+                 "has_password": bool(opts.get("password"))},
+        "reset": {"mode": cfg.reset.mode,
+                  "proxmox": {"api_url": px.get("api_url", ""), "token_id": px.get("token_id", ""),
+                              "node": px.get("node", ""), "vmid": px.get("vmid", ""),
+                              "snapshot": px.get("snapshot", ""), "target_host": px.get("target_host", ""),
+                              "ca_file": px.get("ca_file", ""), "has_token_secret": bool(px.get("token_secret"))}},
+        "gaps": cfg.missing_for_fire(),
+        "binding_error": cfg.rollback_binding_error(),
+    }
+
+
+def _maybe_int(value: Any) -> Any:
+    # Form inputs arrive as strings; hand integers to from_dict so it can validate them.
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return value
+
+
+def form_to_tables(form: dict, existing: dict | None = None) -> dict:
+    """Turn a settings-form payload into a TOML-shaped dict, preserving on-disk secrets.
+
+    A secret absent or blank in the form keeps whatever the current profile holds, so the
+    browser never has to receive a secret in order to leave it unchanged.
+    """
+    existing = existing or {}
+    if not isinstance(form, dict):
+        raise ConfigError("settings payload must be an object")
+    get = lambda d, k: d.get(k, {}) if isinstance(d.get(k), dict) else {}
+    fa, ft, fr = get(form, "attacker"), get(form, "target"), get(form, "runner")
+    fs, fc = get(form, "siem"), get(form, "control")
+    frs = get(form, "reset")
+    fpx = get(frs, "proxmox")
+    adapter = _str(fs, "adapter", "wazuh") or "wazuh"
+
+    old_siem = get(get(existing, "siem"), adapter)
+    old_px = get(get(existing, "reset"), "proxmox")
+    password = _str(fs, "password") or old_siem.get("password", "")
+    token_secret = _str(fpx, "token_secret") or old_px.get("token_secret", "")
+
+    tables: dict[str, Any] = {
+        "control": {"catalog_dir": _str(fc, "catalog_dir"),
+                    "data_dir": get(existing, "control").get("data_dir", "")},
+        "attacker": {"host": _str(fa, "host"), "user": _str(fa, "user"), "ssh_key": _str(fa, "ssh_key")},
+        "target": {"host": _str(ft, "host"), "user": _str(ft, "user"), "agent_id": _str(ft, "agent_id")},
+        "runner": {"dir": _str(fr, "dir", "~/casefiles-lab/lab") or "~/casefiles-lab/lab",
+                   "entry": _str(fr, "entry", "fire.sh") or "fire.sh",
+                   "ready_timeout": _maybe_int(fr.get("ready_timeout", 120))},
+        "siem": {"adapter": adapter, "ingest_wait": _maybe_int(fs.get("ingest_wait", 120)),
+                 adapter: {"indexer_url": _str(fs, "indexer_url"), "index": _str(fs, "index"),
+                           "events_index": _str(fs, "events_index"), "username": _str(fs, "username"),
+                           "dashboard_url": _str(fs, "dashboard_url"), "ca_file": _str(fs, "ca_file"),
+                           "password": password}},
+        "reset": {"mode": _str(frs, "mode", "none").lower() or "none",
+                  "proxmox": {"api_url": _str(fpx, "api_url"), "token_id": _str(fpx, "token_id"),
+                              "node": _str(fpx, "node"), "vmid": _maybe_int(fpx.get("vmid", "")),
+                              "snapshot": _str(fpx, "snapshot"), "target_host": _str(fpx, "target_host"),
+                              "ca_file": _str(fpx, "ca_file"), "token_secret": token_secret}},
+    }
+    return tables
+
+
+def _toml_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t")
+    return f'"{escaped}"'
+
+
+def to_toml(doc: dict, _prefix: str = "") -> str:
+    """Serialize a nested table dict to TOML. Empty scalars are dropped; tables are emitted
+    parent-before-child with scalar keys ahead of subtables, as TOML requires."""
+    scalars = {k: v for k, v in doc.items() if not isinstance(v, dict) and v not in ("", None)}
+    tables = {k: v for k, v in doc.items() if isinstance(v, dict)}
+    lines: list[str] = []
+    if not _prefix:
+        lines += ["# Draghunt range profile. Managed by the dashboard Settings panel.",
+                  "# Secrets stay in this file at mode 0600, or supply them via the environment.", ""]
+    else:
+        lines.append(f"[{_prefix}]")
+    for key, value in scalars.items():
+        lines.append(f"{key} = {_toml_scalar(value)}")
+    if _prefix:
+        lines.append("")
+    for key, value in tables.items():
+        lines.append(to_toml(value, f"{_prefix}.{key}" if _prefix else key))
+    return "\n".join(lines)

@@ -27,6 +27,13 @@ class Workflow:
         self.cfg = cfg
         self.store = CaseStore(cfg.data_dir)
 
+    def reload_config(self, cfg: RangeConfig) -> None:
+        """Swap in a freshly saved profile. Operations read self.cfg live, so this takes
+        effect immediately; the store only moves if the data directory actually changed."""
+        if cfg.data_dir != self.cfg.data_dir:
+            self.store = CaseStore(cfg.data_dir)
+        self.cfg = cfg
+
     def deck(self) -> dict[str, catalog.Scenario]:
         deck = catalog.load_catalog()
         if self.cfg.catalog_dir:

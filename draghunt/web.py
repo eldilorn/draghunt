@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import secrets
 import threading
+import tomllib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -12,7 +13,7 @@ from . import config, telemetry
 from .fire import FireBlocked
 from .reset import ResetBlocked
 from .schema import SchemaError, boolean
-from .store import BusyError, CASE_ID as _CASE_ID, new_case_id
+from .store import BusyError, CASE_ID as _CASE_ID, new_case_id, private_write
 from .workflow import Workflow
 
 STATIC = Path(__file__).parent / "static"
@@ -61,6 +62,27 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _save_config(self, body: dict) -> dict:
+        """Validate a settings-form payload, write range.toml at 0600, and reload the profile.
+
+        Secrets absent from the form are preserved from whatever is already on disk, so the
+        browser never has to hold a secret to leave it unchanged. Validation reuses
+        RangeConfig.from_dict, so the HTTPS, TLS, and rollback-binding rules apply here too.
+        """
+        path = Path(self.server.config_path)
+        existing = {}
+        if path.exists():
+            try:
+                existing = tomllib.loads(path.read_text())
+            except (tomllib.TOMLDecodeError, OSError):
+                existing = {}
+        tables = config.form_to_tables(body, existing)
+        config.RangeConfig.from_dict(tables)  # raises ConfigError on any invalid field
+        private_write(path, config.to_toml(tables))
+        cfg = config.load(path)
+        self.workflow.reload_config(cfg)
+        return config.public_profile(cfg, path)
+
     def _read_body(self) -> dict:
         if self.headers.get_content_type() != "application/json":
             raise SchemaError("Content-Type must be application/json")
@@ -97,6 +119,8 @@ class Handler(BaseHTTPRequestHandler):
                                  "reset_target": {k: cfg.reset.proxmox.get(k) for k in ("node", "vmid", "snapshot")},
                                  "dashboard_url": cfg.siem.options.get("dashboard_url", ""),
                                  "events_available": bool(cfg.siem.options.get("events_index"))})
+            elif route.path == "/api/config":
+                self._json(200, config.public_profile(self.workflow.cfg, self.server.config_path))
             elif route.path == "/api/scores":
                 self._json(200, self.workflow.scores())
             elif route.path == "/api/cases":
@@ -141,6 +165,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.workflow.collect(case_id, body.get("kind", "alerts"), body.get("limit", 2000))
             elif self.path == "/api/detection":
                 result = self.workflow.detection(case_id, body.get("rule_id"), body.get("revision"), body.get("rule_text"), body.get("minimum", 1), body.get("maximum"))
+            elif self.path == "/api/config":
+                result = self._save_config(body)
             else:
                 self._json(404, {"error": "not found"})
                 return
@@ -155,12 +181,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": "operation failed; your saved case remains available"})
 
 
-def make_httpd(host: str = "127.0.0.1", port: int = 8787, cfg: config.RangeConfig | None = None) -> ThreadingHTTPServer:
+def make_httpd(host: str = "127.0.0.1", port: int = 8787, cfg: config.RangeConfig | None = None,
+               config_path: str | Path | None = None) -> ThreadingHTTPServer:
     if host not in ("127.0.0.1", "localhost"):
         raise ValueError("refusing to bind off localhost")
     httpd = ThreadingHTTPServer((host, port), Handler)
     try:
         httpd.session_token = secrets.token_urlsafe(32)
+        httpd.config_path = str(config_path or config.default_path())
         httpd.workflow = Workflow(cfg if cfg is not None else config.load())
         httpd.workflow.recover()
         return httpd
@@ -169,8 +197,9 @@ def make_httpd(host: str = "127.0.0.1", port: int = 8787, cfg: config.RangeConfi
         raise
 
 
-def serve(host: str = "127.0.0.1", port: int = 8787, cfg: config.RangeConfig | None = None):
-    httpd = make_httpd(host, port, cfg)
+def serve(host: str = "127.0.0.1", port: int = 8787, cfg: config.RangeConfig | None = None,
+          config_path: str | Path | None = None):
+    httpd = make_httpd(host, port, cfg, config_path)
     print(f"Draghunt dashboard: http://{host}:{httpd.server_port}")
     try:
         httpd.serve_forever()

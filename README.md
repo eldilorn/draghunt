@@ -18,13 +18,27 @@ python -m draghunt web
 # Open http://127.0.0.1:8787
 ```
 
-1. Choose **Blind assessment** or a named drill, then click **Run exercise**.
+The dashboard has three tabs: **Practice**, **Progress**, and **Settings**.
+
+1. Choose **Blind draw** or a named exercise on Practice, then click **Run**. Synthetic
+   exercises need no lab. To run against your own range, fill in **Settings** first (see
+   below); **Run against my real lab** stays disabled, and tells you what is missing,
+   until the range is configured.
 2. Expand/search saved events and use **Cite** to reference evidence in your report.
 3. Write your findings, timeline, affected assets, impact, and recommendations.
    Drafts autosave; **Save draft** also saves immediately.
 4. Submit the report. The answer key and execution details become available in the debrief.
 5. Reopen an exercise from **Saved exercises**, or export its report as Markdown/JSON.
    **Replay as practice** preserves the scenario parameters and saves another case.
+6. **Progress** holds your scores, per-tactic accuracy, run-mode breakdown, and detection
+   history.
+
+Enter your environment on the **Settings** tab: the attacker box, target, Wazuh indexer
+and credentials, an optional reset, and your private scenario catalog. It is saved to the
+profile file on this machine at owner-only permissions. Passwords and API tokens are stored
+but never shown back in the page; leave a secret field blank to keep the current value.
+The **Advanced** control on Practice holds a repeatable seed for debugging; leave it blank
+for a fresh draw.
 
 The default deck contains SSH password guessing, a web-shell attempt, suspicious DNS
 exfiltration activity, and authorized backup activity as a benign control. These are

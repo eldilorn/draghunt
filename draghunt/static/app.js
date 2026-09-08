@@ -3,13 +3,14 @@ const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name="session-token"]').content;
 let settings, current = null, dirty = false, saving = null, saveTimer, pollTimer;
 const fields = {disposition:'v_disp',technique:'v_tech',source_ip:'v_src',account:'v_acct',narrative:'v_narr',timeline:'v_timeline',assets:'v_assets',impact:'v_impact',actions:'v_actions',confidence:'v_confidence',self_review:'v_review'};
+
 function node(tag, text, className) { const el = document.createElement(tag); if(text !== undefined) el.textContent = String(text); if(className) el.className = className; return el; }
 function message(text, error=false) { $('message').textContent = text; $('message').classList.toggle('danger', error); }
 async function api(path, body, raw=false) {
   const options = {headers:{'X-Draghunt-Token':token}};
   if(body !== undefined) { options.method='POST'; options.headers['Content-Type']='application/json'; options.body=JSON.stringify(body); }
   const response = await fetch(path, options);
-  if(!response.ok) { const error = await response.json(); throw new Error(error.error || `HTTP ${response.status}`); }
+  if(!response.ok) { const error = await response.json().catch(()=>({})); throw new Error(error.error || `HTTP ${response.status}`); }
   return raw ? response.text() : response.json();
 }
 function action(id, fn) {
@@ -19,6 +20,15 @@ function action(id, fn) {
     finally { $(id).disabled = false; }
   });
 }
+
+/* -------- tab navigation -------- */
+function showView(name) {
+  for(const view of document.querySelectorAll('.view')) view.hidden = view.id !== `view-${name}`;
+  for(const tab of document.querySelectorAll('.tab')) tab.setAttribute('aria-current', String(tab.dataset.view === name));
+}
+for(const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => showView(tab.dataset.view));
+
+/* -------- report drafting -------- */
 function verdict() {
   const value = Object.fromEntries(Object.entries(fields).map(([key,id]) => [key,$(id).value.trim() || null]));
   value.disposition = $('v_disp').value;
@@ -50,16 +60,18 @@ function markDirty() {
 }
 $('reportForm').addEventListener('input',markDirty);
 window.addEventListener('beforeunload',event => { if(dirty || saving) { event.preventDefault(); event.returnValue=''; } });
+
+/* -------- cases + scores -------- */
 async function loadCases() {
-  const cases = await api('/api/cases'), selected=current?.id || $('caseList').value;
+  const cases = await api('/api/cases'), selected=current?.id || null;
   $('caseList').replaceChildren(...cases.map(c => {
-    const item=node('div'); item.setAttribute('role','listitem');
     const button=node('button',undefined,'case-button'); button.type='button'; button.dataset.caseId=c.id;
     button.setAttribute('aria-current',String(c.id===selected));
-    button.append(node('span',c.title),node('span',`${c.state} · ${new Date(c.created_utc).toLocaleString()}`,'subtle'),node('span',c.id.slice(-8),'subtle'));
+    button.append(node('span',c.title),node('span',`${c.state.replaceAll('_',' ')} · ${new Date(c.created_utc).toLocaleString()}`,'subtle'),node('span',c.id.slice(-8),'subtle'));
     button.addEventListener('click',()=>openCase(c.id).catch(error=>message(error.message,true)));
-    item.append(button); return item;
+    return button;
   }));
+  if(!cases.length) $('caseList').append(node('p','No exercises yet. Run one above.','hint'));
   return cases;
 }
 function table(headers, rows) {
@@ -73,11 +85,13 @@ async function loadScores() {
   $('kpiAvg').textContent=s.attempts ? Math.round(s.avg_score) : '—'; $('kpiReport').textContent=s.attempts ? Math.round(s.report_average) : '—';
   $('streak').textContent=`Current passing streak: ${s.streak}`;
   const bars=Object.entries(s.by_tactic).sort((a,b)=>a[1]-b[1]).map(([t,v])=>{ const row=node('div',undefined,'bar-row'); const progress=node('progress'); progress.max=100; progress.value=v; progress.setAttribute('aria-label',`${t}: ${v}/100`); row.append(node('span',t,'bar-label'),progress,node('span',Math.round(v),'bar-val')); return row; });
-  $('tacticBars').replaceChildren(...(bars.length?bars:[node('p','Complete an exercise to see progress.')]));
+  $('tacticBars').replaceChildren(...(bars.length?bars:[node('p','Complete an exercise to see progress.','empty')]));
   $('modeScores').replaceChildren(table(['Mode','Cases','Accuracy'],Object.entries(s.by_mode).map(([mode,v])=>[mode,v.attempts,`${Math.round(v.avg_score)}/100`])));
   $('findingHistory').replaceChildren(table(['Submitted','Mode','Case','Accuracy'],s.recent.map(r=>[new Date(r.ts).toLocaleString(),r.mode,r.scenario_id,`${r.total}/100`])));
-  $('detectionHistory').replaceChildren(table(['Case','Rule / revision','Control','Matches','Result'],s.detections.map(d=>[d.case_id,`${d.rule_id} / ${d.revision}`,d.control?'Benign':'Positive',d.matches,d.passed?'Pass':'Fail'])));
+  $('detectionHistory').replaceChildren(table(['Case','Rule / revision','Control','Matches','Result'],s.detections.map(d=>[d.case_id.slice(-8),`${d.rule_id} / ${d.revision}`,d.control?'Benign':'Positive',d.matches,d.passed?'Pass':'Fail'])));
 }
+
+/* -------- events + investigation -------- */
 function renderEvents() {
   const needle=$('eventFilter').value.toLowerCase();
   const events=(current?.events || []).filter(e => JSON.stringify(e).toLowerCase().includes(needle));
@@ -85,11 +99,11 @@ function renderEvents() {
     const detail=node('details',undefined,'event'), summary=node('summary');
     const preview=event.description || event.raw.full_log || event.rule || 'Event';
     summary.textContent=`${event.event_id} · ${event.timestamp || ''} ${String(preview).slice(0,180)}`;
-    const cite=node('button','Cite','ghost'); cite.type='button'; cite.disabled=Boolean(current.submission);
+    const cite=node('button','Cite','ghost sm'); cite.type='button'; cite.disabled=Boolean(current.submission);
     cite.addEventListener('click',()=>{ const ids=new Set(verdict().evidence_ids); ids.add(event.event_id); $('v_evidence').value=[...ids].join('\n'); markDirty(); });
     detail.append(summary,node('pre',JSON.stringify(event.raw,null,2)),cite); return detail;
   });
-  $('events').replaceChildren(node('p',`${events.length} matching saved events${events.length>250?' · showing 250; narrow your search':''}`,'subtle'),...elements);
+  $('events').replaceChildren(node('p',`${events.length} matching events${events.length>250?' · showing 250; narrow your search':''}`,'hint'),...elements);
 }
 $('eventFilter').addEventListener('input',renderEvents);
 function renderCase(doc, fill=true) {
@@ -111,7 +125,7 @@ function renderCase(doc, fill=true) {
     const finding=doc.submission.finding_score, report=doc.submission.report_score;
     $('score').textContent=`Finding accuracy: ${finding.total}/100 · ${finding.band}`;
     $('reportScore').textContent=`Report completeness: ${report.total}/100`; $('reportNote').textContent=report.note;
-    $('reportChecks').replaceChildren(...Object.entries(report.checks).map(([key,ok])=>node('p',`${ok?'✓':'Missing:'} ${key.replaceAll('_',' ')}`,'subtle')));
+    $('reportChecks').replaceChildren(...Object.entries(report.checks).map(([key,ok])=>node('p',`${ok?'✓':'Missing:'} ${key.replaceAll('_',' ')}`)));
     $('gradeItems').replaceChildren(...table(['Finding','Points','Expected','Reported'],finding.items.map(i=>[i.dimension,i.weight?`${i.earned}/${i.weight}`:'Not scored',i.weight?i.expected:'Not observable / applicable',i.got])).children);
     $('debrief').textContent=JSON.stringify(doc.debrief,null,2);
     if(fill && doc.debrief.truth.disposition==='benign') { $('ruleMin').value='0'; $('ruleMax').value='0'; }
@@ -126,19 +140,36 @@ async function poll(id) {
 }
 async function openCase(id) {
   if(!id) return;
-  await saveDraft(); const doc=await api(`/api/case?id=${encodeURIComponent(id)}`); renderCase(doc); localStorage.setItem('activeCase',id); document.querySelectorAll('[data-case-id]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.caseId===id)));
+  await saveDraft(); const doc=await api(`/api/case?id=${encodeURIComponent(id)}`); renderCase(doc); localStorage.setItem('activeCase',id);
+  document.querySelectorAll('[data-case-id]').forEach(button=>button.setAttribute('aria-current',String(button.dataset.caseId===id)));
 }
+
+/* -------- run controls -------- */
 function confirmLive(reset) {
   const px=settings.reset_target;
   const resetText=reset?`Reset mode ${settings.reset_mode}. ${['both','snapshot'].includes(settings.reset_mode)?`Revert VM ${px.vmid} on ${px.node} to snapshot ${px.snapshot}. `:''}`:'';
   return window.confirm(`${resetText}Run a real exercise against ${settings.target}?`);
 }
+function liveReason() {
+  const el=$('liveReason');
+  const hasLive=settings.deck.some(d=>d.live);
+  if(!settings.fire_ready) {
+    el.hidden=false; el.replaceChildren(node('span','Add your lab details to run live. Missing: '+(settings.gaps.join(', ')||'range configuration')+'. '));
+    const link=node('button','Open Settings','ghost sm'); link.type='button'; link.addEventListener('click',()=>showView('settings')); el.append(link);
+  } else if(!hasLive) {
+    el.hidden=false; el.replaceChildren(node('span','Range is configured, but no live scenarios are available. In Settings, point the catalog directory at your private runner catalog and mark scenarios "live".'));
+  } else { el.hidden=true; el.replaceChildren(); }
+}
 function updateRunControls() {
+  const liveAvailable=settings.fire_ready && settings.deck.some(d=>d.live);
+  $('firelive').disabled=!liveAvailable;
+  if(!liveAvailable) $('firelive').checked=false;
+  liveReason();
   const live=$('firelive').checked;
   $('resetfirst').disabled=!live || settings.reset_mode==='none';
   if($('resetfirst').disabled) $('resetfirst').checked=false;
   const selected=$('scenario').value;
-  const options=[node('option','Blind assessment'),...settings.deck.filter(d=>live ? d.live : d.offline).map(d=>{ const opt=node('option',d.title); opt.value=d.id; return opt; })];
+  const options=[node('option','Blind draw'),...settings.deck.filter(d=>live ? d.live : d.offline).map(d=>{ const opt=node('option',d.title); opt.value=d.id; return opt; })];
   options[0].value=''; $('scenario').replaceChildren(...options); if(options.some(o=>o.value===selected)) $('scenario').value=selected;
 }
 $('firelive').addEventListener('change',updateRunControls);
@@ -147,7 +178,7 @@ action('laybtn',async()=>{
   if(live && !confirmLive(reset)) return;
   const body={scenario:$('scenario').value || null,fire:live,reset,confirm:live};
   if($('seed').value!=='') { const seed=Number($('seed').value); if(!Number.isSafeInteger(seed) || seed<0) throw new Error('Use a nonnegative whole-number seed.'); body.seed=seed; }
-  const doc=await api('/api/lay',body); renderCase(doc); localStorage.setItem('activeCase',doc.id); await loadCases(); message(live?'Exercise queued. Progress is saved as it runs.':'Exercise ready. Investigate the events and save your report.');
+  const doc=await api('/api/lay',body); renderCase(doc); localStorage.setItem('activeCase',doc.id); await loadCases(); message(live?'Exercise queued. Progress is saved as it runs.':'Exercise ready. Investigate the events and write your report.');
 });
 action('refreshCases',loadCases);
 action('savebtn',saveDraft);
@@ -155,7 +186,7 @@ action('pullbtn',async()=>{ if(!current) return; const id=current.id, limit=Numb
 $('reportForm').addEventListener('submit',async event=>{
   event.preventDefault(); if(!current || current.submission) return;
   $('gradebtn').disabled=true;
-  try { await saveDraft(); const doc=await api('/api/grade',{case_id:current.id,verdict:verdict()}); renderCase(doc); await loadScores(); await loadCases(); message('Report saved and submitted. Your first score is recorded.'); }
+  try { await saveDraft(); const doc=await api('/api/grade',{case_id:current.id,verdict:verdict()}); renderCase(doc); await loadScores(); await loadCases(); message('Report submitted. Your first score is recorded.'); }
   catch(error) { message(error.message,true); }
   finally { $('gradebtn').disabled=false; }
 });
@@ -168,15 +199,63 @@ async function download(format) {
 action('exportMd',()=>download('markdown')); action('exportJson',()=>download('json'));
 action('replaybtn',async()=>{ if(!current?.submission) return; const live=current.mode==='live', reset=live && settings.reset_mode!=='none'; if(live && !confirmLive(reset)) return; const doc=await api('/api/lay',{replay_of:current.id,fire:live,reset,confirm:live}); renderCase(doc); await loadCases(); message('Replay started. Its report is saved separately from first-attempt scores.'); });
 action('checkRule',async()=>{ const doc=await api('/api/detection',{case_id:current.id,rule_id:$('ruleId').value,revision:$('ruleRevision').value,rule_text:$('ruleText').value,minimum:Number($('ruleMin').value),maximum:$('ruleMax').value===''?null:Number($('ruleMax').value)}); renderCase(doc,false); await loadScores(); });
+
+/* -------- settings -------- */
+const CONFIG_FIELDS = ['control.catalog_dir','control.data_dir','attacker.host','attacker.user','attacker.ssh_key','target.host','target.user','target.agent_id','siem.indexer_url','siem.username','siem.password','siem.index','siem.events_index','siem.dashboard_url','siem.ca_file','siem.ingest_wait','reset.mode','reset.proxmox.api_url','reset.proxmox.token_id','reset.proxmox.token_secret','reset.proxmox.node','reset.proxmox.vmid','reset.proxmox.snapshot','reset.proxmox.target_host'];
+const get = (obj,path) => path.split('.').reduce((o,k)=>o?.[k], obj);
+function fieldId(path){ return 'cfg-'+path.replaceAll('.','-'); }
+function fillConfig(cfg) {
+  $('cfgPath').textContent=cfg.path;
+  for(const path of CONFIG_FIELDS) {
+    if(path.endsWith('password') || path.endsWith('token_secret')) continue;
+    const value=get(cfg,path); const el=$(fieldId(path)); if(el) el.value=value == null ? '' : value;
+  }
+  $('siemPwKept').hidden=!cfg.siem.has_password;
+  $('pxTokKept').hidden=!cfg.reset.proxmox.has_token_secret;
+  $('cfg-siem-password').value=''; $('cfg-reset-proxmox-token_secret').value='';
+  const el=$('cfgReadiness');
+  if(!cfg.gaps.length) { el.className='readiness ok'; el.replaceChildren(node('span','✓ Ready to run against your lab.')); }
+  else {
+    el.className='readiness warn';
+    el.replaceChildren(node('span','Fill these in to enable live runs:'));
+    const ul=node('ul'); for(const gap of cfg.gaps) ul.append(node('li',gap)); el.append(ul);
+  }
+  if(cfg.binding_error) { el.className='readiness warn'; el.append(node('p',cfg.binding_error)); }
+}
+async function loadConfig(){ fillConfig(await api('/api/config')); }
+$('cfgForm').addEventListener('submit',async event=>{
+  event.preventDefault(); $('cfgSave').disabled=true; $('cfgStatus').textContent='Saving…';
+  try {
+    const body={control:{},attacker:{},target:{},siem:{},reset:{proxmox:{}}};
+    for(const path of CONFIG_FIELDS) {
+      if(path==='control.data_dir') continue;                 // read-only; server preserves it
+      const el=$(fieldId(path)); if(!el) continue;
+      const value=el.value.trim();
+      if((path.endsWith('password')||path.endsWith('token_secret')) && value==='') continue;  // blank keeps existing
+      const keys=path.split('.'); let target=body;
+      for(const key of keys.slice(0,-1)) target=target[key] ??= {};
+      target[keys.at(-1)]=value;
+    }
+    const cfg=await api('/api/config',body); fillConfig(cfg);
+    settings=await api('/api/state'); updateRunControls(); setRangePill();
+    $('cfgStatus').textContent='Saved. Environment updated.';
+  } catch(error) { $('cfgStatus').textContent=''; message(error.message,true); }
+  finally { $('cfgSave').disabled=false; }
+});
+
+/* -------- boot -------- */
+function setRangePill() {
+  const liveAvailable=settings.fire_ready && settings.deck.some(d=>d.live);
+  const pill=$('rangeStatus'); pill.textContent=liveAvailable?'Live range':'Synthetic mode'; pill.classList.toggle('live',liveAvailable);
+  $('rangeDetail').textContent=liveAvailable?`Target: ${settings.target}.`:'Synthetic exercises are ready. Add your lab in Settings to run live.';
+}
 async function boot() {
   settings=await api('/api/state');
-  const liveAvailable=settings.fire_ready && settings.deck.some(d=>d.live);
-  $('firelive').disabled=!liveAvailable; updateRunControls();
-  $('rangeStatus').textContent=liveAvailable?'Live range configured':'Synthetic mode';
-  $('rangeDetail').textContent=liveAvailable?`Target: ${settings.target}. Readiness is checked before execution.`:'Synthetic exercises are ready. Configure your range and a private protocol-v1 scenario catalog to enable live runs.';
+  setRangePill(); updateRunControls();
   $('sourceKind').querySelector('option[value="events"]').disabled=!settings.events_available;
-  if(settings.dashboard_url) { const url=new URL(settings.dashboard_url); if(['http:','https:'].includes(url.protocol)) { $('wazuhLink').href=url.href; $('wazuhLink').hidden=false; } }
-  await loadScores(); const cases=await loadCases(); const previous=localStorage.getItem('activeCase');
+  if(settings.dashboard_url) { try { const url=new URL(settings.dashboard_url); if(['http:','https:'].includes(url.protocol)) { $('wazuhLink').href=url.href; $('wazuhLink').hidden=false; } } catch{} }
+  await loadConfig(); await loadScores();
+  const cases=await loadCases(); const previous=localStorage.getItem('activeCase');
   const selected=cases.find(c=>c.id===previous) || cases.find(c=>c.state!=='submitted') || cases[0];
   if(selected) await openCase(selected.id);
 }

@@ -89,3 +89,58 @@ class WebTest(unittest.TestCase):
         self.assertEqual(self.request('/../../etc/passwd')[0],404)
         js = (Path(__file__).parents[1]/'draghunt/static/app.js').read_text()
         self.assertNotIn('innerHTML',js)
+
+
+class ConfigEndpointTest(unittest.TestCase):
+    """The Settings panel: GET redacts secrets, POST writes the profile and enables live runs."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.cfg_path = Path(self.temp.name) / "range.toml"
+        self.server = make_httpd(port=0, cfg=RangeConfig(data_dir=self.temp.name), config_path=str(self.cfg_path))
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.url = f'http://127.0.0.1:{self.server.server_port}'
+        with urllib.request.urlopen(self.url) as response:
+            self.token = re.search(r'name="session-token" content="([^"]+)"', response.read().decode()).group(1)
+
+    def tearDown(self):
+        self.server.shutdown(); self.server.server_close(); self.thread.join(timeout=5); self.temp.cleanup()
+
+    def request(self, path, body=None):
+        headers = {'Content-Type': 'application/json', 'X-Draghunt-Token': self.token}
+        req = urllib.request.Request(self.url + path, data=None if body is None else json.dumps(body).encode(), headers=headers)
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as exc:
+            with exc:
+                return exc.code, exc.read().decode()
+
+    def test_saves_profile_hides_secrets_and_enables_live(self):
+        status, body = self.request('/api/config')
+        self.assertEqual(status, 200)
+        self.assertNotIn('password', json.loads(body)['siem'])   # only has_password is exposed
+        self.assertGreater(len(json.loads(body)['gaps']), 0)
+
+        form = {'attacker': {'host': '10.0.0.5', 'user': 'kali'},
+                'target': {'host': '10.0.0.6', 'agent_id': '001'},
+                'siem': {'indexer_url': 'https://indexer.test:9200', 'username': 'reader', 'password': 'sekret'}}
+        status, body = self.request('/api/config', form)
+        self.assertEqual(status, 200)
+        saved = json.loads(body)
+        self.assertEqual(saved['gaps'], [])              # now fire-ready
+        self.assertTrue(saved['siem']['has_password'])
+        self.assertNotIn('password', saved['siem'])      # value withheld; only has_password
+        self.assertNotIn('sekret', body)
+        self.assertEqual(self.cfg_path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.server.workflow.cfg.target.host, '10.0.0.6')
+        self.assertTrue(json.loads(self.request('/api/state')[1])['fire_ready'])
+
+        # A blank secret on the next save keeps the stored one.
+        self.request('/api/config', {**form, 'siem': {**form['siem'], 'password': ''}})
+        self.assertEqual(self.server.workflow.cfg.siem.options['password'], 'sekret')
+
+    def test_rejects_unsafe_profile(self):
+        for bad in ({'siem': {'indexer_url': 'http://indexer.test'}},
+                    {'target': {'host': '10.0.0.6'}, 'reset': {'mode': 'both', 'proxmox': {'vmid': '101', 'target_host': '10.9.9.9'}}}):
+            self.assertEqual(self.request('/api/config', bad)[0], 400)

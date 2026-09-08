@@ -94,15 +94,18 @@ def main(argv: list[str] | None = None) -> int:
             write_output(target, config.EXAMPLE_TOML, args.force)
             print(f"Example profile: {target}. Fill in the target, credentials, and private runner catalog.")
             return 0
+        config_path = args.config or config.default_path()
+        if args.command in ("web", "desktop"):
+            # First-run friendly: a missing profile starts synthetic; Settings creates it.
+            cfg = config.load(config_path, missing_ok=True)
+            if args.command == "web":
+                from .web import serve
+                serve(args.host, args.port, cfg, config_path)
+            else:
+                from .desktop import run
+                run(port=args.port, cfg=cfg, config_path=config_path)
+            return 0
         cfg = config.load(args.config)
-        if args.command == "web":
-            from .web import serve
-            serve(args.host, args.port, cfg)
-            return 0
-        if args.command == "desktop":
-            from .desktop import run
-            run(port=args.port, cfg=cfg)
-            return 0
         workflow = Workflow(cfg)
         if args.command == "list":
             for scenario in workflow.deck().values():
