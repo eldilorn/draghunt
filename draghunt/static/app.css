@@ -78,6 +78,7 @@ a.link{display:inline-block;text-decoration:none;padding:9px 16px;border:1px sol
 @media(max-width:820px){.workspace{grid-template-columns:1fr}}
 .main{min-width:0}
 .sidebar{position:sticky;top:68px}
+@media(max-width:820px){.sidebar{position:static}}  /* after the sticky rule so it wins */
 .side-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .side-head h3{margin:0}
 .case-list{display:flex;flex-direction:column;gap:6px;max-height:70vh;overflow:auto}
