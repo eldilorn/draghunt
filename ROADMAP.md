@@ -41,6 +41,15 @@ Alongside the checklist:
 - [ ] Confirm TLS verification and the mode-0600 secret refusal behave against the real lab.
 - [ ] Capture any bugs found during live runs as fixes, not scope growth.
 
+**Progress (2026-09-22):** the casefiles-lab range is wired in and the first live case has
+been fired end to end. Validated so far: the CLI reads the private catalog (check 1), the
+runner reports a verified observed result (check 2, sealed), and Wazuh evidence collection
+returns a complete scoped set (check 4, 71 alerts). Getting there cleared the controller
+SSH chain, a reissued indexer cert (SAN plus a Key Usage fix for OpenSSL 3.6), and reader
+role permissions. Still to test: reset/preflight failure stopping a run (check 3), draft
+persistence and a single sealed score (checks 5 and 6, pending the open case's submission),
+and a detection-rule replay (check 7). See casefiles-lab/documentation/draghunt-integration.md.
+
 **Exit criteria:** every checklist item passes on the real range; the version is tagged
 **1.0.0**; `LIVE-MODE-PLAN.md` is updated to reflect validated (not just implemented) status.
 
